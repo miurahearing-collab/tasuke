@@ -265,6 +265,25 @@ const ScheduleModal = ({
   );
 };
 
+// ─── 日付メモ入力欄（独立コンポーネント：キーストロークでの親再レンダリング防止）──
+const DayMemoInput = React.memo(({ dateStr, userId, onSave }: {
+  dateStr: string; userId: string; onSave: (text: string) => void;
+}) => {
+  const [text, setText] = useState(() => getDayMemoLS(userId, dateStr));
+  return (
+    <textarea
+      autoFocus
+      value={text}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => onSave(text)}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSave(text); } }}
+      className="w-full text-[10px] border border-blue-300 rounded px-1 py-0.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[36px]"
+      rows={2}
+      placeholder="メモを入力"
+    />
+  );
+});
+
 // ─── メインコンポーネント ─────────────────────────────────────────────
 export const TeamMeeting = () => {
   const {
@@ -280,9 +299,10 @@ export const TeamMeeting = () => {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [scheduleModal, setScheduleModal] = useState<ScheduleModalState | null>(null);
 
-  // ドラッグ中のビジュアルフィードバック
+  // ドラッグ中はDOM直接操作（Reactステート更新なし→再レンダリングゼロ）
   const [dragScheduleId, setDragScheduleId] = useState<string | null>(null);
-  const [dragTemp, setDragTemp] = useState<{ start: Date; end: Date } | null>(null);
+  const dragElemRef = useRef<HTMLElement | null>(null);
+  const dragCurrentTemp = useRef<{ start: Date; end: Date } | null>(null);
 
   // カレンダースクロールref
   const calendarScrollRef = useRef<HTMLDivElement>(null);
@@ -291,7 +311,6 @@ export const TeamMeeting = () => {
 
   // 日付メモ用状態
   const [editingMemoDate, setEditingMemoDate] = useState<string | null>(null);
-  const [memoEditText, setMemoEditText] = useState('');
   const [memoVersion, setMemoVersion] = useState(0); // メモ保存時に再レンダリング
 
   // 日程調整フォーム
@@ -335,15 +354,12 @@ export const TeamMeeting = () => {
     [calendarWeekStart]
   );
 
-  // 週ビュー用：日付ごとのスケジュールをMapでキャッシュ（毎レンダリング7回filter防止）
+  // 週ビュー用：日付ごとのスケジュールをMapでキャッシュ
   const schedulesPerDay = useMemo(() => {
     const map = new Map<string, typeof mySchedules>();
     weekDays.forEach(day => {
       const key = format(day, 'yyyy-MM-dd');
-      map.set(key, mySchedules.filter(s => {
-        const schedStart = isoToDate(s.startDateTime);
-        return isSameDay(schedStart, day);
-      }));
+      map.set(key, mySchedules.filter(s => isSameDay(isoToDate(s.startDateTime), day)));
     });
     return map;
   }, [mySchedules, weekDays]);
@@ -397,61 +413,81 @@ export const TeamMeeting = () => {
     };
   };
 
-  // ─── ドラッグ開始（クロージャ方式：useEffect不要）──────────────
+  // ─── ドラッグ開始（DOM直接操作方式：ドラッグ中React再レンダリングなし）──
   const startDrag = (
     e: React.PointerEvent,
     schedule: PersonalSchedule,
     type: 'move' | 'resize',
-    dayIdx: number
+    _dayIdx: number
   ) => {
     e.preventDefault();
     e.stopPropagation();
 
     const originalStart = isoToDate(schedule.startDateTime);
     const originalEnd = isoToDate(schedule.endDateTime);
-    let currentTemp = { start: new Date(originalStart), end: new Date(originalEnd) };
+    const origTop = (originalStart.getHours() - START_HOUR + originalStart.getMinutes() / 60) * HOUR_HEIGHT;
+    const origHeight = Math.max(differenceInMinutes(originalEnd, originalStart), 30) / 60 * HOUR_HEIGHT;
 
-    // グリッドの列幅を取得
-    const getColumnWidth = () => {
-      if (!gridRef.current) return 100;
-      return gridRef.current.getBoundingClientRect().width / 7;
-    };
+    // ドラッグ対象要素を取得（リサイズハンドルは親要素を使う）
+    const eventElem = (type === 'resize'
+      ? (e.currentTarget as HTMLElement).parentElement
+      : e.currentTarget as HTMLElement) as HTMLElement;
 
+    dragElemRef.current = eventElem;
+    dragCurrentTemp.current = { start: new Date(originalStart), end: new Date(originalEnd) };
+
+    // ドラッグ開始スタイル（React再レンダリング不要の部分はDOM直接）
+    eventElem.style.opacity = '0.7';
+    eventElem.style.zIndex = '30';
+    eventElem.style.cursor = type === 'resize' ? 's-resize' : 'grabbing';
+
+    // ドラッグ開始のステート更新（カーソル変更用に1回だけ）
     setDragScheduleId(schedule.id);
-    setDragTemp({ ...currentTemp });
 
     const startY = e.clientY;
     const startX = e.clientX;
+    const getColumnWidth = () => gridRef.current?.getBoundingClientRect().width / 7 || 100;
 
     const onMove = (ev: PointerEvent) => {
       const deltaY = ev.clientY - startY;
-      const deltaX = ev.clientX - startX;
       const rawMinutes = (deltaY / HOUR_HEIGHT) * 60;
       const snappedMinutes = Math.round(rawMinutes / SNAP_MINUTES) * SNAP_MINUTES;
-      const colW = getColumnWidth();
 
       if (type === 'move') {
-        const dayDelta = Math.round(deltaX / colW);
+        // 縦方向：DOM直接更新（React不使用）
+        const newTop = origTop + (snappedMinutes / 60) * HOUR_HEIGHT;
+        const clampedTop = clamp(newTop, 0, TOTAL_HOURS * HOUR_HEIGHT - origHeight);
+        eventElem.style.top = `${clampedTop}px`;
+
+        // 最終確定値をrefに保存（onUpで使用）
         const newStart = new Date(originalStart.getTime() + snappedMinutes * 60000);
         const newEnd = new Date(originalEnd.getTime() + snappedMinutes * 60000);
+
+        // 横方向（日付変更）
+        const deltaX = ev.clientX - startX;
+        const colW = getColumnWidth();
+        const dayDelta = Math.round(deltaX / colW);
         if (dayDelta !== 0) {
           newStart.setDate(newStart.getDate() + dayDelta);
           newEnd.setDate(newEnd.getDate() + dayDelta);
         }
+
         const startH = newStart.getHours() + newStart.getMinutes() / 60;
         const endH = newEnd.getHours() + newEnd.getMinutes() / 60;
         if (startH >= START_HOUR && endH <= END_HOUR) {
-          currentTemp = { start: newStart, end: newEnd };
-          setDragTemp({ ...currentTemp });
+          dragCurrentTemp.current = { start: newStart, end: newEnd };
         }
       } else {
-        // リサイズ：終了時間のみ
+        // リサイズ：DOM直接更新
+        const newHeight = origHeight + (snappedMinutes / 60) * HOUR_HEIGHT;
+        const clampedHeight = Math.max(newHeight, HOUR_HEIGHT / 2);
+        eventElem.style.height = `${clampedHeight}px`;
+
         const newEnd = new Date(originalEnd.getTime() + snappedMinutes * 60000);
         const minEnd = new Date(originalStart.getTime() + 30 * 60000);
         const endH = newEnd.getHours() + newEnd.getMinutes() / 60;
         if (newEnd >= minEnd && endH <= END_HOUR) {
-          currentTemp = { start: originalStart, end: newEnd };
-          setDragTemp({ ...currentTemp });
+          dragCurrentTemp.current = { start: originalStart, end: newEnd };
         }
       }
     };
@@ -460,16 +496,27 @@ export const TeamMeeting = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
 
-      const moved = currentTemp.start.getTime() !== originalStart.getTime() ||
-        currentTemp.end.getTime() !== originalEnd.getTime();
-      if (moved) {
+      // DOMスタイルをリセット（Reactが正しい値でレンダリングし直す）
+      eventElem.style.opacity = '';
+      eventElem.style.zIndex = '';
+      eventElem.style.cursor = '';
+      eventElem.style.top = '';
+      eventElem.style.height = '';
+      dragElemRef.current = null;
+
+      const temp = dragCurrentTemp.current;
+      dragCurrentTemp.current = null;
+
+      if (temp && (
+        temp.start.getTime() !== originalStart.getTime() ||
+        temp.end.getTime() !== originalEnd.getTime()
+      )) {
         await updatePersonalSchedule(schedule.id, {
-          startDateTime: currentTemp.start.toISOString(),
-          endDateTime: currentTemp.end.toISOString(),
+          startDateTime: temp.start.toISOString(),
+          endDateTime: temp.end.toISOString(),
         });
       }
-      setDragScheduleId(null);
-      setDragTemp(null);
+      setDragScheduleId(null); // ドラッグ終了の1回だけ再レンダリング
     };
 
     window.addEventListener('pointermove', onMove);
@@ -480,11 +527,10 @@ export const TeamMeeting = () => {
   const openMemoEdit = (dateStr: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingMemoDate(dateStr);
-    setMemoEditText(getDayMemoLS(currentUser.id, dateStr));
   };
 
-  const saveMemo = (dateStr: string) => {
-    setDayMemoLS(currentUser.id, dateStr, memoEditText);
+  const saveMemo = (dateStr: string, text: string) => {
+    setDayMemoLS(currentUser.id, dateStr, text);
     setMemoVersion(v => v + 1);
     setEditingMemoDate(null);
   };
@@ -493,23 +539,9 @@ export const TeamMeeting = () => {
   const renderWeekView = () => {
     const dayNames = ['月', '火', '水', '木', '金', '土', '日'];
 
-    // Mapから取得（ドラッグ中は表示位置を上書き）
-    const getSchedulesForDay = (day: Date) => {
-      const key = format(day, 'yyyy-MM-dd');
-      const base = schedulesPerDay.get(key) || [];
-      if (!dragScheduleId || !dragTemp) return base;
-      // ドラッグ中のスケジュールは移動先の日に表示する
-      const dragging = mySchedules.find(s => s.id === dragScheduleId);
-      if (!dragging) return base;
-      const dragDay = format(dragTemp.start, 'yyyy-MM-dd');
-      if (dragDay === key) {
-        // この日にドラッグ中のスケジュールがなければ追加
-        return base.some(s => s.id === dragScheduleId) ? base : [...base, dragging];
-      } else {
-        // この日からドラッグで別の日へ移動した場合は除外
-        return base.filter(s => s.id !== dragScheduleId);
-      }
-    };
+    // Mapから直接取得（ドラッグ中の位置はDOM操作で管理するためここでは不要）
+    const getSchedulesForDay = (day: Date) =>
+      schedulesPerDay.get(format(day, 'yyyy-MM-dd')) || [];
 
     const getConfirmedForDay = (day: Date) =>
       confirmedPerDay.get(format(day, 'yyyy-MM-dd')) || [];
@@ -560,15 +592,10 @@ export const TeamMeeting = () => {
                 {/* 日付メモ */}
                 <div className="px-1 py-0.5 min-h-[22px]">
                   {isEditing ? (
-                    <textarea
-                      autoFocus
-                      value={memoEditText}
-                      onChange={e => setMemoEditText(e.target.value)}
-                      onBlur={() => saveMemo(dateStr)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveMemo(dateStr); } }}
-                      className="w-full text-[10px] border border-blue-300 rounded px-1 py-0.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[36px]"
-                      rows={2}
-                      placeholder="メモを入力"
+                    <DayMemoInput
+                      dateStr={dateStr}
+                      userId={currentUser.id}
+                      onSave={(text) => saveMemo(dateStr, text)}
                     />
                   ) : (
                     <div
@@ -695,8 +722,8 @@ export const TeamMeeting = () => {
                     {/* 個人スケジュール */}
                     {schedulesForDay.map(schedule => {
                       const isDragging = dragScheduleId === schedule.id;
-                      const displayStart = isDragging && dragTemp ? dragTemp.start : isoToDate(schedule.startDateTime);
-                      const displayEnd = isDragging && dragTemp ? dragTemp.end : isoToDate(schedule.endDateTime);
+                      const displayStart = isoToDate(schedule.startDateTime);
+                      const displayEnd = isoToDate(schedule.endDateTime);
                       const { top, height } = getEventStyle(displayStart, displayEnd);
                       const isOwner = schedule.createdBy === currentUser.id;
                       const linkedTask = schedule.taskId ? tasks.find(t => t.id === schedule.taskId) : null;
@@ -707,7 +734,7 @@ export const TeamMeeting = () => {
                           className={cn(
                             'absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
                             linkedTask ? 'bg-purple-500' : 'bg-blue-500',
-                            isDragging ? 'opacity-60 ring-2 ring-blue-300' : isOwner ? 'cursor-grab active:cursor-grabbing hover:opacity-90' : 'cursor-pointer hover:opacity-90',
+                            isDragging ? 'ring-2 ring-blue-300' : isOwner ? 'cursor-grab hover:opacity-90' : 'cursor-pointer hover:opacity-90',
                           )}
                           data-event
                           style={{ top, height, minHeight: 20 }}
