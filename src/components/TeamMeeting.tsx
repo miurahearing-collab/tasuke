@@ -4,6 +4,7 @@ import {
   Plus, Users, Calendar, Check, X, ChevronRight, ChevronLeft,
   ArrowLeft, CheckCircle2, Trash2, CalendarDays, List, StickyNote,
 } from 'lucide-react';
+import { TaskDetailModal } from './TaskDetailModal';
 import { cn } from '../lib/utils';
 import { VoteStatus, PersonalSchedule } from '../types';
 import {
@@ -95,12 +96,13 @@ interface ScheduleModalState {
 
 // ─── スケジュールモーダル ─────────────────────────────────────────────
 const ScheduleModal = ({
-  state, onClose, onSave, onDelete, tasks, users, currentUserId,
+  state, onClose, onSave, onDelete, onOpenTask, tasks, users, currentUserId,
 }: {
   state: ScheduleModalState;
   onClose: () => void;
   onSave: (data: { title: string; memo: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => void;
   onDelete?: () => void;
+  onOpenTask?: (taskId: string) => void;
   tasks: any[];
   users: any[];
   currentUserId: string;
@@ -197,9 +199,9 @@ const ScheduleModal = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">メモ / MTG URL</label>
-            <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="メモやオンラインMTGのURLを入力" />
+            <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={7}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              placeholder="メモやオンラインMTGのURL、議事録などを入力" />
           </div>
 
           {(!isEdit || !s?.taskId) && (
@@ -213,9 +215,25 @@ const ScheduleModal = ({
               {selectedTaskId && <p className="text-xs text-amber-600 mt-1">タスク連携時は参加者をタスクの担当者のみから選択できます。</p>}
             </div>
           )}
-          {isEdit && s?.taskId && (
-            <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">タスクと連携済み</div>
-          )}
+          {isEdit && s?.taskId && (() => {
+            const linkedTask = tasks.find((t: any) => t.id === s.taskId);
+            return (
+              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                <span className="text-blue-500 font-medium">タスクと連携済み：</span>
+                {linkedTask && onOpenTask ? (
+                  <button
+                    type="button"
+                    onClick={() => { onOpenTask(s.taskId!); onClose(); }}
+                    className="ml-1 text-blue-700 underline hover:text-blue-900 font-medium"
+                  >
+                    {linkedTask.title}
+                  </button>
+                ) : (
+                  <span className="text-blue-700 ml-1">{linkedTask?.title || '（タスクが見つかりません）'}</span>
+                )}
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">参加者</label>
@@ -265,6 +283,35 @@ const ScheduleModal = ({
   );
 };
 
+// ─── 重複イベントのレイアウト計算 ──────────────────────────────────
+function layoutEvents(events: PersonalSchedule[]) {
+  if (events.length <= 1) return events.map(s => ({ schedule: s, col: 0, totalCols: 1 }));
+  const sorted = [...events].sort((a, b) =>
+    new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
+  );
+  const colEnds: number[] = [];
+  const assignments: { schedule: PersonalSchedule; col: number }[] = [];
+  for (const ev of sorted) {
+    const start = new Date(ev.startDateTime).getTime();
+    const end = new Date(ev.endDateTime).getTime();
+    let col = colEnds.findIndex(e => e <= start);
+    if (col === -1) { col = colEnds.length; colEnds.push(end); }
+    else { colEnds[col] = end; }
+    assignments.push({ schedule: ev, col });
+  }
+  return assignments.map(({ schedule, col }) => {
+    const start = new Date(schedule.startDateTime).getTime();
+    const end = new Date(schedule.endDateTime).getTime();
+    const concurrent = assignments.filter(({ schedule: o }) => {
+      const os = new Date(o.startDateTime).getTime();
+      const oe = new Date(o.endDateTime).getTime();
+      return os < end && oe > start;
+    });
+    const totalCols = Math.max(...concurrent.map(c => c.col)) + 1;
+    return { schedule, col, totalCols };
+  });
+}
+
 // ─── 日付メモ入力欄（独立コンポーネント：キーストロークでの親再レンダリング防止）──
 const DayMemoInput = React.memo(({ dateStr, userId, onSave }: {
   dateStr: string; userId: string; onSave: (text: string) => void;
@@ -301,6 +348,7 @@ export const TeamMeeting = () => {
 
   // ドラッグ中はDOM直接操作（Reactステート更新なし→再レンダリングゼロ）
   const [dragScheduleId, setDragScheduleId] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const dragElemRef = useRef<HTMLElement | null>(null);
   const dragCurrentTemp = useRef<{ start: Date; end: Date } | null>(null);
 
@@ -418,17 +466,20 @@ export const TeamMeeting = () => {
     e: React.PointerEvent,
     schedule: PersonalSchedule,
     type: 'move' | 'resize',
-    _dayIdx: number
+    dayIdx: number
   ) => {
     e.preventDefault();
     e.stopPropagation();
 
     const originalStart = isoToDate(schedule.startDateTime);
     const originalEnd = isoToDate(schedule.endDateTime);
-    const origTop = (originalStart.getHours() - START_HOUR + originalStart.getMinutes() / 60) * HOUR_HEIGHT;
-    const origHeight = Math.max(differenceInMinutes(originalEnd, originalStart), 30) / 60 * HOUR_HEIGHT;
+    const durationMs = originalEnd.getTime() - originalStart.getTime();
+    // カレンダー開始からの分数
+    const origStartMin = (originalStart.getHours() - START_HOUR) * 60 + originalStart.getMinutes();
+    const origEndMin = (originalEnd.getHours() - START_HOUR) * 60 + originalEnd.getMinutes();
+    const origTop = (origStartMin / 60) * HOUR_HEIGHT;
+    const origHeight = Math.max(origEndMin - origStartMin, 30) / 60 * HOUR_HEIGHT;
 
-    // ドラッグ対象要素を取得（リサイズハンドルは親要素を使う）
     const eventElem = (type === 'resize'
       ? (e.currentTarget as HTMLElement).parentElement
       : e.currentTarget as HTMLElement) as HTMLElement;
@@ -436,59 +487,79 @@ export const TeamMeeting = () => {
     dragElemRef.current = eventElem;
     dragCurrentTemp.current = { start: new Date(originalStart), end: new Date(originalEnd) };
 
-    // ドラッグ開始スタイル（React再レンダリング不要の部分はDOM直接）
     eventElem.style.opacity = '0.7';
     eventElem.style.zIndex = '30';
     eventElem.style.cursor = type === 'resize' ? 's-resize' : 'grabbing';
 
-    // ドラッグ開始のステート更新（カーソル変更用に1回だけ）
+    // クロスデイ用ゴースト要素
+    let ghost: HTMLDivElement | null = null;
+    if (type === 'move' && gridRef.current) {
+      ghost = document.createElement('div');
+      ghost.style.cssText = [
+        'position:absolute',
+        'border-radius:6px',
+        `background:rgba(59,130,246,0.2)`,
+        'border:2px dashed #3b82f6',
+        'pointer-events:none',
+        'z-index:25',
+        'display:none',
+        `height:${origHeight}px`,
+      ].join(';');
+      gridRef.current.appendChild(ghost);
+    }
+
     setDragScheduleId(schedule.id);
 
     const startY = e.clientY;
     const startX = e.clientX;
-    const getColumnWidth = () => gridRef.current?.getBoundingClientRect().width / 7 || 100;
+    const getColumnWidth = () => (gridRef.current?.getBoundingClientRect().width ?? 700) / 7;
 
     const onMove = (ev: PointerEvent) => {
       const deltaY = ev.clientY - startY;
+      const deltaX = ev.clientX - startX;
+      const colW = getColumnWidth();
       const rawMinutes = (deltaY / HOUR_HEIGHT) * 60;
       const snappedMinutes = Math.round(rawMinutes / SNAP_MINUTES) * SNAP_MINUTES;
 
       if (type === 'move') {
-        // 縦方向：DOM直接更新（React不使用）
-        const newTop = origTop + (snappedMinutes / 60) * HOUR_HEIGHT;
-        const clampedTop = clamp(newTop, 0, TOTAL_HOURS * HOUR_HEIGHT - origHeight);
-        eventElem.style.top = `${clampedTop}px`;
+        // クランプ：開始がSTART_HOUR以上、終了がEND_HOUR以下
+        const minOffset = -origStartMin;
+        const maxOffset = TOTAL_HOURS * 60 - origEndMin;
+        const clampedOffset = clamp(snappedMinutes, minOffset, maxOffset);
 
-        // 最終確定値をrefに保存（onUpで使用）
-        const newStart = new Date(originalStart.getTime() + snappedMinutes * 60000);
-        const newEnd = new Date(originalEnd.getTime() + snappedMinutes * 60000);
+        const newTop = origTop + (clampedOffset / 60) * HOUR_HEIGHT;
+        eventElem.style.top = `${newTop}px`;
 
-        // 横方向（日付変更）
-        const deltaX = ev.clientX - startX;
-        const colW = getColumnWidth();
+        // DOMと完全に同期したdragCurrentTempを維持
+        const newStart = new Date(originalStart.getTime() + clampedOffset * 60000);
+        const newEnd = new Date(newStart.getTime() + durationMs);
         const dayDelta = Math.round(deltaX / colW);
         if (dayDelta !== 0) {
           newStart.setDate(newStart.getDate() + dayDelta);
           newEnd.setDate(newEnd.getDate() + dayDelta);
         }
+        dragCurrentTemp.current = { start: newStart, end: newEnd };
 
-        const startH = newStart.getHours() + newStart.getMinutes() / 60;
-        const endH = newEnd.getHours() + newEnd.getMinutes() / 60;
-        if (startH >= START_HOUR && endH <= END_HOUR) {
-          dragCurrentTemp.current = { start: newStart, end: newEnd };
+        // ゴースト表示（他の列に移動した場合）
+        if (ghost) {
+          const targetCol = dayIdx + dayDelta;
+          if (dayDelta !== 0 && targetCol >= 0 && targetCol < 7) {
+            ghost.style.display = 'block';
+            ghost.style.left = `${targetCol * colW + 2}px`;
+            ghost.style.width = `${colW - 4}px`;
+            ghost.style.top = `${newTop}px`;
+          } else {
+            ghost.style.display = 'none';
+          }
         }
       } else {
-        // リサイズ：DOM直接更新
-        const newHeight = origHeight + (snappedMinutes / 60) * HOUR_HEIGHT;
-        const clampedHeight = Math.max(newHeight, HOUR_HEIGHT / 2);
-        eventElem.style.height = `${clampedHeight}px`;
-
-        const newEnd = new Date(originalEnd.getTime() + snappedMinutes * 60000);
-        const minEnd = new Date(originalStart.getTime() + 30 * 60000);
-        const endH = newEnd.getHours() + newEnd.getMinutes() / 60;
-        if (newEnd >= minEnd && endH <= END_HOUR) {
-          dragCurrentTemp.current = { start: originalStart, end: newEnd };
-        }
+        // リサイズ：duration を clamp してDOM + temp を同期
+        const origDuration = origEndMin - origStartMin;
+        const newDuration = clamp(origDuration + snappedMinutes, 30, TOTAL_HOURS * 60 - origStartMin);
+        const newHeight = (newDuration / 60) * HOUR_HEIGHT;
+        eventElem.style.height = `${newHeight}px`;
+        const newEnd = new Date(originalStart.getTime() + newDuration * 60000);
+        dragCurrentTemp.current = { start: originalStart, end: newEnd };
       }
     };
 
@@ -496,7 +567,9 @@ export const TeamMeeting = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
 
-      // DOMスタイルをリセット（Reactが正しい値でレンダリングし直す）
+      ghost?.remove();
+      ghost = null;
+
       eventElem.style.opacity = '';
       eventElem.style.zIndex = '';
       eventElem.style.cursor = '';
@@ -516,7 +589,7 @@ export const TeamMeeting = () => {
           endDateTime: temp.end.toISOString(),
         });
       }
-      setDragScheduleId(null); // ドラッグ終了の1回だけ再レンダリング
+      setDragScheduleId(null);
     };
 
     window.addEventListener('pointermove', onMove);
@@ -639,7 +712,7 @@ export const TeamMeeting = () => {
             </div>
 
             {/* 7列分の日カラム */}
-            <div ref={gridRef} className="flex-1 flex">
+            <div ref={gridRef} className="flex-1 flex relative">
               {weekDays.map((day, colIdx) => {
                 const schedulesForDay = getSchedulesForDay(day);
                 const confirmedForDay = getConfirmedForDay(day);
@@ -719,25 +792,27 @@ export const TeamMeeting = () => {
                       );
                     })}
 
-                    {/* 個人スケジュール */}
-                    {schedulesForDay.map(schedule => {
+                    {/* 個人スケジュール（重複時は複数列表示） */}
+                    {layoutEvents(schedulesForDay).map(({ schedule, col, totalCols }) => {
                       const isDragging = dragScheduleId === schedule.id;
                       const displayStart = isoToDate(schedule.startDateTime);
                       const displayEnd = isoToDate(schedule.endDateTime);
                       const { top, height } = getEventStyle(displayStart, displayEnd);
                       const isOwner = schedule.createdBy === currentUser.id;
                       const linkedTask = schedule.taskId ? tasks.find(t => t.id === schedule.taskId) : null;
+                      const leftPct = (col / totalCols) * 100;
+                      const rightPct = ((totalCols - col - 1) / totalCols) * 100;
 
                       return (
                         <div
                           key={schedule.id}
                           className={cn(
-                            'absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
+                            'absolute rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
                             linkedTask ? 'bg-purple-500' : 'bg-blue-500',
                             isDragging ? 'ring-2 ring-blue-300' : isOwner ? 'cursor-grab hover:opacity-90' : 'cursor-pointer hover:opacity-90',
                           )}
                           data-event
-                          style={{ top, height, minHeight: 20 }}
+                          style={{ top, height, minHeight: 20, left: `calc(${leftPct}% + 1px)`, right: `calc(${rightPct}% + 1px)` }}
                           onPointerDown={isOwner ? (e) => startDrag(e, schedule, 'move', colIdx) : undefined}
                           onClick={isDragging ? undefined : (e) => { e.stopPropagation(); setScheduleModal({ mode: 'edit', schedule }); }}
                         >
@@ -745,6 +820,11 @@ export const TeamMeeting = () => {
                           {height > 30 && (
                             <div className="text-blue-100 text-[10px] pointer-events-none">
                               {format(displayStart, 'HH:mm')}〜{format(displayEnd, 'HH:mm')}
+                            </div>
+                          )}
+                          {schedule.memo && height > 30 && (
+                            <div className="text-blue-200 text-[10px] pointer-events-none flex items-center gap-0.5">
+                              <span>📝</span><span>メモあり</span>
                             </div>
                           )}
                           {linkedTask && height > 42 && (
@@ -1157,10 +1237,14 @@ export const TeamMeeting = () => {
           onClose={() => setScheduleModal(null)}
           onSave={handleScheduleSave}
           onDelete={scheduleModal.schedule ? () => archivePersonalSchedule(scheduleModal.schedule!.id) : undefined}
+          onOpenTask={(taskId) => { setScheduleModal(null); setOpenTaskId(taskId); }}
           tasks={myTasks}
           users={users}
           currentUserId={currentUser.id}
         />
+      )}
+      {openTaskId && (
+        <TaskDetailModal taskId={openTaskId} onClose={() => setOpenTaskId(null)} />
       )}
     </div>
   );
