@@ -139,12 +139,12 @@ export const Dashboard = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2 className="text-2xl font-bold text-gray-900">{init.title}</h2>
-                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl font-bold text-gray-900 min-w-0 break-all">{init.title}</h2>
+                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium shrink-0 whitespace-nowrap">
                   {categories.find(c => c.id === init.categoryId)?.name || '不明'}
                 </span>
-                <div className="flex items-center gap-1 ml-2">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => setIsEditingInitiative(true)}
                     className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -154,19 +154,21 @@ export const Dashboard = () => {
                   </button>
                   <button
                     onClick={() => setShowArchiveConfirm(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-md transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-md transition-colors whitespace-nowrap"
                     title="完了にする"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="5" x="2" y="4" rx="2"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><rect width="20" height="5" x="2" y="4" rx="2"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
                     完了にする
                   </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors ml-1"
-                    title="施策を削除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {currentUser?.role === 'admin' && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                      title="施策を削除（管理者のみ）"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             )}

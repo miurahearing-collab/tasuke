@@ -21,6 +21,9 @@ export interface Initiative {
   assigneeIds?: string[];
   assigneeId?: string; // deprecated
   isArchived: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
   createdAt: string;
   createdBy?: string;
   updatedBy?: string;
@@ -41,6 +44,9 @@ export interface Task {
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   isCompleted: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
   readStatus?: Record<string, string>; // userId -> lastReadAt (ISO string)
   createdBy?: string;
   updatedBy?: string;

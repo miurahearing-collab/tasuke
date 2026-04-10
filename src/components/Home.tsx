@@ -91,30 +91,30 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <button
           onClick={() => setCurrentScreen('dashboard')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-3 sm:p-6"
+          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-2 sm:p-6"
         >
-          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
             <LayoutDashboard className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <span className="font-medium text-gray-900 text-xs sm:text-base leading-tight text-center">ダッシュボード</span>
+          <span className="font-medium text-gray-900 text-[10px] sm:text-base leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis w-full">ダッシュボード</span>
         </button>
         <button
           onClick={() => setCurrentScreen('meeting')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-3 sm:p-6"
+          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-2 sm:p-6"
         >
-          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
             <Calendar className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <span className="font-medium text-gray-900 text-xs sm:text-base leading-tight text-center">日程調整</span>
+          <span className="font-medium text-gray-900 text-[10px] sm:text-base leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis w-full">日程調整</span>
         </button>
         <button
           onClick={() => setCurrentScreen('reservation')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-3 sm:p-6"
+          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 sm:gap-3 group p-2 sm:p-6"
         >
-          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
             <Clock className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <span className="font-medium text-gray-900 text-xs sm:text-base leading-tight text-center">打ち合わせ予約</span>
+          <span className="font-medium text-gray-900 text-[10px] sm:text-base leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis w-full">打ち合わせ予約</span>
         </button>
       </div>
 

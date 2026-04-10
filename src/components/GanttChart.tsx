@@ -13,11 +13,11 @@ interface GanttChartProps {
   /** When true (default), clicking an initiative name in the sidebar opens InitiativeDetailModal.
    *  Set to false in Dashboard's detail view where edit/complete buttons are already at the top. */
   showInitiativeDetail?: boolean;
-  /** 'incomplete' = show only incomplete tasks (default), 'all' = show all tasks (completed at bottom) */
+  /** 'incomplete' = show only incomplete tasks, 'all' = show all tasks (completed at bottom). Default: 'all' */
   taskFilter?: 'incomplete' | 'all';
 }
 
-export const GanttChart = ({ initiatives, showInitiativeDetail = true, taskFilter = 'incomplete' }: GanttChartProps) => {
+export const GanttChart = ({ initiatives, showInitiativeDetail = true, taskFilter = 'all' }: GanttChartProps) => {
   const { tasks, memos, categories, users, currentUser, toggleTaskCompletion, archiveInitiative, updateTask } = useAppContext();
   const [zoomLevel, setZoomLevel] = useState(75); // Default 75%
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
@@ -505,7 +505,7 @@ const TaskBar = ({ task, timelineStartDate, pixelsPerDay, onClick, onUpdate }: {
   return (
     <div
       className={cn(
-        "absolute top-1.5 bottom-1.5 rounded-md shadow-sm text-xs flex items-center z-10 transition-colors group",
+        "absolute top-1.5 bottom-1.5 rounded-md shadow-sm flex items-center z-10 transition-colors group overflow-hidden",
         task.isCompleted ? "bg-gray-200 text-gray-500" : "bg-blue-500 text-white",
         dragState.type ? "opacity-80 z-50 cursor-grabbing" : "cursor-pointer hover:brightness-110"
       )}
@@ -523,7 +523,7 @@ const TaskBar = ({ task, timelineStartDate, pixelsPerDay, onClick, onUpdate }: {
         onClick={(e) => e.stopPropagation()}
       />
       
-      <span className="px-2 overflow-hidden whitespace-nowrap pointer-events-none select-none">
+      <span className="flex-1 min-w-0 px-2 overflow-hidden text-[10px] leading-tight break-words pointer-events-none select-none line-clamp-3">
         {task.title}
       </span>
 

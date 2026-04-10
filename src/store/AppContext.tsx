@@ -104,7 +104,9 @@ interface AppContextType {
   users: User[];
   categories: Category[];
   initiatives: Initiative[];
+  deletedInitiatives: Initiative[];
   tasks: Task[];
+  deletedTasks: Task[];
   memos: TaskMemo[];
   meetingPolls: MeetingPoll[];
   addCategory: (name: string, isAdminOnly: boolean) => Promise<void>;
@@ -115,13 +117,18 @@ interface AppContextType {
   archiveInitiative: (id: string) => Promise<void>;
   unarchiveInitiative: (id: string) => Promise<void>;
   deleteInitiative: (id: string) => Promise<void>;
+  restoreInitiative: (id: string) => Promise<void>;
+  permanentDeleteInitiative: (id: string) => Promise<void>;
   addTask: (initiativeId: string, title: string, startDate: string, endDate: string, assigneeIds?: string[], recurringOptions?: RecurringOptions) => Promise<void>;
   addTasks: (tasksData: { initiativeId: string, title: string, startDate: string, endDate: string, assigneeIds: string[], recurringGroupId?: string }[]) => Promise<void>;
   updateTask: (taskId: string, title: string, startDate: string, endDate: string, assigneeIds?: string[]) => Promise<void>;
   toggleTaskCompletion: (id: string) => Promise<void>;
   updateTaskDescription: (taskId: string, description: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  restoreTask: (id: string) => Promise<void>;
+  permanentDeleteTask: (id: string) => Promise<void>;
   addMemo: (taskId: string, content: string) => Promise<void>;
+  deleteMemo: (memoId: string) => Promise<void>;
   markTaskAsRead: (taskId: string) => Promise<void>;
   addMeetingPoll: (title: string, description: string, targetUserIds: string[], options: string[]) => Promise<void>;
   voteMeetingPoll: (pollId: string, option: string, status: VoteStatus) => Promise<void>;
@@ -140,7 +147,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allInitiatives, setAllInitiatives] = useState<Initiative[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [memos, setMemos] = useState<TaskMemo[]>([]);
   const [meetingPolls, setMeetingPolls] = useState<MeetingPoll[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -152,10 +159,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return allCategories.filter(c => currentUser.visibleCategoryIds!.includes(c.id));
   }, [allCategories, currentUser]);
 
-  const initiatives = React.useMemo(() => {
+  const allVisibleInitiatives = React.useMemo(() => {
     if (currentUser?.role === 'admin' || !currentUser?.visibleCategoryIds) return allInitiatives;
     return allInitiatives.filter(i => currentUser.visibleCategoryIds!.includes(i.categoryId));
   }, [allInitiatives, currentUser]);
+
+  // Active initiatives (not deleted)
+  const initiatives = React.useMemo(() =>
+    allVisibleInitiatives.filter(i => !i.isDeleted),
+    [allVisibleInitiatives]
+  );
+
+  // Soft-deleted initiatives
+  const deletedInitiatives = React.useMemo(() =>
+    allVisibleInitiatives.filter(i => i.isDeleted),
+    [allVisibleInitiatives]
+  );
+
+  // Active tasks (not deleted)
+  const tasks = React.useMemo(() => allTasks.filter(t => !t.isDeleted), [allTasks]);
+
+  // Soft-deleted tasks
+  const deletedTasks = React.useMemo(() => allTasks.filter(t => t.isDeleted), [allTasks]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -202,7 +227,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
     const unsubTasks = onSnapshot(collection(db, 'tasks'), async (snapshot) => {
       const newTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
-      setTasks(newTasks);
+      setAllTasks(newTasks);
 
       // Auto-reset recurring tasks whose period has passed
       const today = startOfDay(new Date());
@@ -319,8 +344,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  // Soft-delete initiative (moves to trash)
   const deleteInitiative = async (id: string) => {
-    const initTasks = tasks.filter(t => t.initiativeId === id);
+    await updateDoc(doc(db, 'initiatives', id), {
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.id || null,
+    });
+  };
+
+  // Restore initiative from trash
+  const restoreInitiative = async (id: string) => {
+    await updateDoc(doc(db, 'initiatives', id), {
+      isDeleted: false,
+      deletedAt: deleteField(),
+      deletedBy: deleteField(),
+    });
+  };
+
+  // Permanently delete initiative and all its tasks (admin only, enforced in UI)
+  const permanentDeleteInitiative = async (id: string) => {
+    const initTasks = allTasks.filter(t => t.initiativeId === id);
     const batch = writeBatch(db);
     initTasks.forEach(task => {
       batch.delete(doc(db, 'tasks', task.id));
@@ -419,7 +463,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  // Soft-delete task (moves to trash)
   const deleteTask = async (id: string) => {
+    await updateDoc(doc(db, 'tasks', id), {
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.id || null,
+    });
+  };
+
+  // Restore task from trash
+  const restoreTask = async (id: string) => {
+    await updateDoc(doc(db, 'tasks', id), {
+      isDeleted: false,
+      deletedAt: deleteField(),
+      deletedBy: deleteField(),
+    });
+  };
+
+  // Permanently delete task and its memos (admin only, enforced in UI)
+  const permanentDeleteTask = async (id: string) => {
     const taskMemos = memos.filter(m => m.taskId === id);
     const batch = writeBatch(db);
     taskMemos.forEach(memo => {
@@ -427,6 +490,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
     batch.delete(doc(db, 'tasks', id));
     await batch.commit();
+  };
+
+  const deleteMemo = async (memoId: string) => {
+    await deleteDoc(doc(db, 'memos', memoId));
   };
 
   const addMemo = async (taskId: string, content: string) => {
@@ -499,10 +566,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      currentUser, users, categories, initiatives, tasks, memos, meetingPolls,
+      currentUser, users, categories,
+      initiatives, deletedInitiatives,
+      tasks, deletedTasks,
+      memos, meetingPolls,
       addCategory, updateCategory, deleteCategory,
-      addInitiative, updateInitiative, archiveInitiative, unarchiveInitiative, deleteInitiative,
-      addTask, addTasks, updateTask, toggleTaskCompletion, updateTaskDescription, deleteTask, addMemo, markTaskAsRead,
+      addInitiative, updateInitiative, archiveInitiative, unarchiveInitiative,
+      deleteInitiative, restoreInitiative, permanentDeleteInitiative,
+      addTask, addTasks, updateTask, toggleTaskCompletion, updateTaskDescription,
+      deleteTask, restoreTask, permanentDeleteTask,
+      addMemo, deleteMemo, markTaskAsRead,
       addMeetingPoll, voteMeetingPoll, updateMeetingPoll, moveToTrashMeetingPoll, restoreMeetingPoll, deleteMeetingPoll, updateUser, logout
     }}>
       {children}

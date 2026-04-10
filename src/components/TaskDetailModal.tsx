@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { X, Send, Save, MessageSquare, Trash2 } from 'lucide-react';
+import { X, Send, Save, MessageSquare, Trash2, AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
 
 export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: () => void }) => {
-  const { tasks, memos, users, currentUser, updateTaskDescription, updateTask, addMemo, markTaskAsRead, deleteTask, toggleTaskCompletion } = useAppContext();
+  const { tasks, memos, users, currentUser, updateTaskDescription, updateTask, addMemo, deleteMemo, markTaskAsRead, deleteTask, toggleTaskCompletion } = useAppContext();
   const task = tasks.find(t => t.id === taskId);
   
   const [description, setDescription] = useState(task?.description || '');
@@ -17,6 +17,7 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
   const [startDate, setStartDate] = useState(task?.startDate || '');
   const [endDate, setEndDate] = useState(task?.endDate || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [memoToDelete, setMemoToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -81,9 +82,9 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">{task.title}</h2>
+        <div className="px-6 py-4 border-b border-gray-200 flex items-start gap-3 justify-between bg-gray-50">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-bold text-gray-900 break-all">{task.title}</h2>
             <div className="text-sm text-gray-500 mt-1 flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <span>期間:</span>
@@ -153,10 +154,10 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => toggleTaskCompletion(task.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                 task.isCompleted
                   ? 'text-gray-600 bg-gray-100 hover:bg-gray-200'
                   : 'text-green-700 bg-green-50 hover:bg-green-100'
@@ -256,20 +257,53 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
                 ) : (
                   taskMemos.map(memo => {
                     const isMine = memo.userId === currentUser?.id;
+                    const canDelete = currentUser?.role === 'admin' || isMine;
                     return (
-                      <div key={memo.id} className={cn("flex flex-col max-w-[85%]", isMine ? "ml-auto items-end" : "mr-auto items-start")}>
+                      <div key={memo.id} className={cn("flex flex-col max-w-[85%] group/memo", isMine ? "ml-auto items-end" : "mr-auto items-start")}>
                         <div className="text-xs text-gray-500 mb-1 px-1 flex items-center gap-2">
                           <span className="font-medium">{getUserName(memo.userId)}</span>
                           <span>{format(parseISO(memo.createdAt), 'MM/dd HH:mm')}</span>
+                          {canDelete && (
+                            <button
+                              onClick={() => setMemoToDelete(memo.id)}
+                              className="opacity-0 group-hover/memo:opacity-100 transition-opacity p-0.5 text-gray-400 hover:text-red-500 rounded"
+                              title="削除"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
-                        <div className={cn(
-                          "px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap",
-                          isMine 
-                            ? "bg-blue-600 text-white rounded-tr-sm" 
-                            : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
-                        )}>
-                          {memo.content}
-                        </div>
+                        {memoToDelete === memo.id ? (
+                          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+                            <div className="flex items-center gap-1.5 text-red-700 mb-2 font-medium">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              このメッセージを削除しますか？
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { deleteMemo(memo.id); setMemoToDelete(null); }}
+                                className="px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700"
+                              >
+                                削除する
+                              </button>
+                              <button
+                                onClick={() => setMemoToDelete(null)}
+                                className="px-2.5 py-1 bg-white text-gray-600 border border-gray-300 text-xs font-medium rounded hover:bg-gray-50"
+                              >
+                                キャンセル
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={cn(
+                            "px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap",
+                            isMine
+                              ? "bg-blue-600 text-white rounded-tr-sm"
+                              : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
+                          )}>
+                            {memo.content}
+                          </div>
+                        )}
                       </div>
                     );
                   })

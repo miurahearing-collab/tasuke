@@ -138,13 +138,15 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
                       <ArchiveIcon className="w-3.5 h-3.5" />
                       完了にする
                     </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors ml-1"
-                      title="施策を削除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors ml-1"
+                        title="施策を削除（管理者のみ）"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
