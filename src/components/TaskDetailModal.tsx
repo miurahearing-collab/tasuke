@@ -4,6 +4,35 @@ import { X, Send, Save, MessageSquare, Trash2, AlertTriangle, CalendarPlus, Chec
 import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
 
+// ─── 30分刻み時間セレクト ───────────────────────────────────────────
+const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i);
+const pad = (n: number) => String(n).padStart(2, '0');
+const TimeSelect = ({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) => {
+  const parts = value.split(':');
+  const h = parseInt(parts[0] ?? '10', 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  return (
+    <div className={cn('flex items-center gap-1', className)}>
+      <select
+        value={h}
+        onChange={e => onChange(`${pad(Number(e.target.value))}:${pad(m)}`)}
+        className="flex-1 px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+      >
+        {ALL_HOURS.map(hh => <option key={hh} value={hh}>{pad(hh)}</option>)}
+      </select>
+      <span className="text-blue-400 font-medium text-xs">:</span>
+      <select
+        value={m}
+        onChange={e => onChange(`${pad(h)}:${pad(Number(e.target.value))}`)}
+        className="w-14 px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+      >
+        <option value={0}>00</option>
+        <option value={30}>30</option>
+      </select>
+    </div>
+  );
+};
+
 export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: () => void }) => {
   const { tasks, memos, users, currentUser, updateTaskDescription, updateTask, addMemo, deleteMemo, markTaskAsRead, deleteTask, toggleTaskCompletion, personalSchedules, addPersonalSchedule } = useAppContext();
   const task = tasks.find(t => t.id === taskId);
@@ -22,6 +51,17 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
   const [schedDate, setSchedDate] = useState(task?.startDate || '');
   const [schedStart, setSchedStart] = useState('10:00');
   const [schedEnd, setSchedEnd] = useState('11:00');
+
+  // 開始時間変更：終了時間を元の時間差を保ったまま自動連動
+  const handleSchedStartChange = (newStart: string) => {
+    const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const fromMin = (min: number) => `${pad(Math.floor(min / 60) % 24)}:${pad(min % 60)}`;
+    const duration = toMin(schedEnd) - toMin(schedStart);
+    const newStartMin = toMin(newStart);
+    const newEndMin = newStartMin + (duration > 0 ? duration : 60);
+    setSchedStart(newStart);
+    setSchedEnd(fromMin(Math.min(newEndMin, 23 * 60 + 30))); // 23:30 を上限
+  };
 
   useEffect(() => {
     if (task) {
@@ -240,21 +280,11 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
               </div>
               <div>
                 <label className="block text-xs text-blue-700 mb-1">開始</label>
-                <input
-                  type="time"
-                  value={schedStart}
-                  onChange={e => setSchedStart(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+                <TimeSelect value={schedStart} onChange={handleSchedStartChange} />
               </div>
               <div>
                 <label className="block text-xs text-blue-700 mb-1">終了</label>
-                <input
-                  type="time"
-                  value={schedEnd}
-                  onChange={e => setSchedEnd(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+                <TimeSelect value={schedEnd} onChange={setSchedEnd} />
               </div>
             </div>
             <div className="flex gap-2 mt-3">

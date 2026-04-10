@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useAppContext } from '../store/AppContext';
 import {
   Plus, Users, Calendar, Check, X, ChevronRight, ChevronLeft,
@@ -283,32 +284,25 @@ const ScheduleModal = ({
   );
 };
 
-// ─── 重複イベントのレイアウト計算 ──────────────────────────────────
-function layoutEvents(events: PersonalSchedule[]) {
-  if (events.length <= 1) return events.map(s => ({ schedule: s, col: 0, totalCols: 1 }));
-  const sorted = [...events].sort((a, b) =>
-    new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
-  );
+// ─── 重複イベントのレイアウト計算（汎用） ──────────────────────────
+// 個人スケジュールも確定済み日程調整も同じロジックで横並び配置
+type LayoutItem<T> = { start: number; end: number; data: T };
+function layoutEvents<T>(events: LayoutItem<T>[]): Array<{ data: T; col: number; totalCols: number }> {
+  if (events.length === 0) return [];
+  if (events.length === 1) return [{ data: events[0].data, col: 0, totalCols: 1 }];
+  const sorted = [...events].sort((a, b) => a.start - b.start || a.end - b.end);
   const colEnds: number[] = [];
-  const assignments: { schedule: PersonalSchedule; col: number }[] = [];
+  const assigned: Array<LayoutItem<T> & { col: number }> = [];
   for (const ev of sorted) {
-    const start = new Date(ev.startDateTime).getTime();
-    const end = new Date(ev.endDateTime).getTime();
-    let col = colEnds.findIndex(e => e <= start);
-    if (col === -1) { col = colEnds.length; colEnds.push(end); }
-    else { colEnds[col] = end; }
-    assignments.push({ schedule: ev, col });
+    let col = colEnds.findIndex(e => e <= ev.start);
+    if (col === -1) { col = colEnds.length; colEnds.push(ev.end); }
+    else { colEnds[col] = ev.end; }
+    assigned.push({ ...ev, col });
   }
-  return assignments.map(({ schedule, col }) => {
-    const start = new Date(schedule.startDateTime).getTime();
-    const end = new Date(schedule.endDateTime).getTime();
-    const concurrent = assignments.filter(({ schedule: o }) => {
-      const os = new Date(o.startDateTime).getTime();
-      const oe = new Date(o.endDateTime).getTime();
-      return os < end && oe > start;
-    });
+  return assigned.map(a => {
+    const concurrent = assigned.filter(o => o.start < a.end && o.end > a.start);
     const totalCols = Math.max(...concurrent.map(c => c.col)) + 1;
-    return { schedule, col, totalCols };
+    return { data: a.data, col: a.col, totalCols };
   });
 }
 
@@ -379,6 +373,12 @@ export const TeamMeeting = () => {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const dragElemRef = useRef<HTMLElement | null>(null);
   const dragCurrentTemp = useRef<{ start: Date; end: Date } | null>(null);
+  // ドラッグ完了後の楽観的更新（Firestoreタイミングに依存しない表示）
+  const [localScheduleOverride, setLocalScheduleOverride] = useState<{
+    id: string; startDateTime: string; endDateTime: string;
+  } | null>(null);
+  // ドラッグ直後のクリック誤発火防止
+  const recentlyDraggedRef = useRef(false);
 
   // カレンダースクロールref
   const calendarScrollRef = useRef<HTMLDivElement>(null);
@@ -420,10 +420,15 @@ export const TeamMeeting = () => {
     [tasks, currentUser.id]
   );
 
-  const mySchedules = useMemo(() =>
-    personalSchedules.filter(s => s.createdBy === currentUser.id || s.participantIds.includes(currentUser.id)),
-    [personalSchedules, currentUser.id]
-  );
+  const mySchedules = useMemo(() => {
+    const raw = personalSchedules.filter(s => s.createdBy === currentUser.id || s.participantIds.includes(currentUser.id));
+    // 楽観的更新: ドラッグ直後のローカルオーバーライドを適用（Firestoreの onSnapshot 反映までのズレ防止）
+    if (!localScheduleOverride) return raw;
+    return raw.map(s => s.id === localScheduleOverride.id
+      ? { ...s, startDateTime: localScheduleOverride.startDateTime, endDateTime: localScheduleOverride.endDateTime }
+      : s
+    );
+  }, [personalSchedules, currentUser.id, localScheduleOverride]);
 
   const weekDays = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => addDays(calendarWeekStart, i)),
@@ -496,7 +501,6 @@ export const TeamMeeting = () => {
     type: 'move' | 'resize',
     dayIdx: number
   ) => {
-    e.preventDefault();
     e.stopPropagation();
 
     const originalStart = isoToDate(schedule.startDateTime);
@@ -512,39 +516,50 @@ export const TeamMeeting = () => {
       ? (e.currentTarget as HTMLElement).parentElement
       : e.currentTarget as HTMLElement) as HTMLElement;
 
-    dragElemRef.current = eventElem;
-    dragCurrentTemp.current = { start: new Date(originalStart), end: new Date(originalEnd) };
-
-    eventElem.style.opacity = '0.7';
-    eventElem.style.zIndex = '30';
-    eventElem.style.cursor = type === 'resize' ? 's-resize' : 'grabbing';
-
-    // クロスデイ用ゴースト要素
-    let ghost: HTMLDivElement | null = null;
-    if (type === 'move' && gridRef.current) {
-      ghost = document.createElement('div');
-      ghost.style.cssText = [
-        'position:absolute',
-        'border-radius:6px',
-        `background:rgba(59,130,246,0.2)`,
-        'border:2px dashed #3b82f6',
-        'pointer-events:none',
-        'z-index:25',
-        'display:none',
-        `height:${origHeight}px`,
-      ].join(';');
-      gridRef.current.appendChild(ghost);
-    }
-
-    setDragScheduleId(schedule.id);
-
     const startY = e.clientY;
     const startX = e.clientX;
     const getColumnWidth = () => (gridRef.current?.getBoundingClientRect().width ?? 700) / 7;
 
+    // 一定距離以上動いてから初めて「ドラッグ開始」とみなす（クリック誤認防止）
+    const DRAG_THRESHOLD = 4;
+    let dragStarted = false;
+    let ghost: HTMLDivElement | null = null;
+
+    const beginDrag = () => {
+      if (dragStarted) return;
+      dragStarted = true;
+      dragElemRef.current = eventElem;
+      dragCurrentTemp.current = { start: new Date(originalStart), end: new Date(originalEnd) };
+      eventElem.style.opacity = '0.7';
+      eventElem.style.zIndex = '30';
+      eventElem.style.cursor = type === 'resize' ? 's-resize' : 'grabbing';
+      if (type === 'move' && gridRef.current) {
+        ghost = document.createElement('div');
+        ghost.style.cssText = [
+          'position:absolute',
+          'border-radius:6px',
+          `background:rgba(59,130,246,0.2)`,
+          'border:2px dashed #3b82f6',
+          'pointer-events:none',
+          'z-index:25',
+          'display:none',
+          `height:${origHeight}px`,
+        ].join(';');
+        gridRef.current.appendChild(ghost);
+      }
+      setDragScheduleId(schedule.id);
+    };
+
     const onMove = (ev: PointerEvent) => {
       const deltaY = ev.clientY - startY;
       const deltaX = ev.clientX - startX;
+
+      // しきい値未満はまだクリック扱い
+      if (!dragStarted) {
+        if (Math.abs(deltaY) < DRAG_THRESHOLD && Math.abs(deltaX) < DRAG_THRESHOLD) return;
+        beginDrag();
+      }
+
       const colW = getColumnWidth();
       const rawMinutes = (deltaY / HOUR_HEIGHT) * 60;
       const snappedMinutes = Math.round(rawMinutes / SNAP_MINUTES) * SNAP_MINUTES;
@@ -591,18 +606,21 @@ export const TeamMeeting = () => {
       }
     };
 
-    const onUp = async () => {
+    const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+
+      // ドラッグが開始されていなかった（＝プレーンなクリック）場合は何もしない
+      // → onClick ハンドラが正常に動作する
+      if (!dragStarted) return;
 
       ghost?.remove();
       ghost = null;
 
-      // カーソル・透過はすぐリセット（UX向上）
+      // 透過・カーソルのみ即リセット（top/height は React の再レンダリングで正しい値に上書きされる）
       eventElem.style.opacity = '';
       eventElem.style.zIndex = '';
       eventElem.style.cursor = '';
-      // ※ top/height はまだリセットしない → Firestore更新中の旧位置フラッシュを防止
       dragElemRef.current = null;
 
       const temp = dragCurrentTemp.current;
@@ -614,19 +632,29 @@ export const TeamMeeting = () => {
       );
 
       if (moved && temp) {
-        // Firestore更新が完了するまでDOM位置を維持（旧データでのReact再レンダリングを防ぐ）
-        await updatePersonalSchedule(schedule.id, {
-          startDateTime: temp.start.toISOString(),
-          endDateTime: temp.end.toISOString(),
+        const newStart = temp.start.toISOString();
+        const newEnd = temp.end.toISOString();
+        // flushSync で同期的に React 再レンダリング → style prop により
+        // eventElem の inline style が新しい位置で上書きされる（フラッシュなし）
+        flushSync(() => {
+          setLocalScheduleOverride({ id: schedule.id, startDateTime: newStart, endDateTime: newEnd });
+          setDragScheduleId(null);
         });
-        // Firestore onSnapshot がローカルキャッシュを更新済みのため
-        // この時点でsetDragScheduleId(null)するとReactは最新データで再レンダリングする
+        // Firestore へ反映（.then で override 解除）
+        updatePersonalSchedule(schedule.id, { startDateTime: newStart, endDateTime: newEnd })
+          .then(() => {
+            setLocalScheduleOverride(prev => prev?.id === schedule.id ? null : prev);
+          });
+      } else {
+        // 移動なし: インラインスタイルをクリアして元の位置に戻す
+        eventElem.style.top = '';
+        eventElem.style.height = '';
+        setDragScheduleId(null);
       }
 
-      // Firestore更新後にDOMスタイルをリセット → Reactが正しい位置で描画
-      eventElem.style.top = '';
-      eventElem.style.height = '';
-      setDragScheduleId(null);
+      // ドラッグ直後のクリック誤発火を防ぐ
+      recentlyDraggedRef.current = true;
+      setTimeout(() => { recentlyDraggedRef.current = false; }, 300);
     };
 
     window.addEventListener('pointermove', onMove);
@@ -660,9 +688,17 @@ export const TeamMeeting = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 260px)' }}>
         {/* ナビゲーション */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
-          <button onClick={() => setCalendarWeekStart(prev => addDays(prev, -7))} className="p-1.5 text-gray-600 hover:bg-gray-200 rounded-md">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setCalendarWeekStart(prev => addDays(prev, -7))} className="p-1.5 text-gray-600 hover:bg-gray-200 rounded-md">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setCalendarWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+              className="px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 border border-blue-200 rounded-md transition-colors"
+            >
+              今日
+            </button>
+          </div>
           <span className="text-sm font-semibold text-gray-800">
             {format(calendarWeekStart, 'yyyy年M月d日')} 〜 {format(addDays(calendarWeekStart, 6), 'M月d日')}
           </span>
@@ -758,6 +794,8 @@ export const TeamMeeting = () => {
                     onClick={e => {
                       // イベントブロック上のクリックは無視
                       if ((e.target as HTMLElement).closest('[data-event]')) return;
+                      // ドラッグ直後の誤クリックを無視
+                      if (recentlyDraggedRef.current) return;
                       // 列の論理的なY座標（スクロール込み）
                       const rect = e.currentTarget.getBoundingClientRect();
                       const colRelY = e.clientY - rect.top;
@@ -802,74 +840,101 @@ export const TeamMeeting = () => {
                       );
                     })()}
 
-                    {/* 確定した日程調整 */}
-                    {confirmedForDay.map(({ poll, parsed }) => {
-                      const { top, height } = getEventStyle(parsed.startDateTime, parsed.endDateTime);
-                      return (
-                        <div
-                          key={poll.id}
-                          data-event
-                          className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 text-white bg-green-600 shadow-sm cursor-pointer hover:opacity-90 overflow-hidden z-10 select-none"
-                          style={{ top, height, minHeight: 20 }}
-                          title={`${poll.title}（確定済み）`}
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <div className="font-medium text-[11px] truncate">{poll.title}</div>
-                          <div className="text-green-100 text-[10px]">{parsed.startTime}〜{parsed.endTime}</div>
-                        </div>
-                      );
-                    })}
+                    {/* 確定済み日程調整 + 個人スケジュールを統合してレイアウト（Google カレンダー風の横並び表示） */}
+                    {(() => {
+                      type EventData =
+                        | { kind: 'confirmed'; poll: typeof confirmedForDay[number]['poll']; parsed: typeof confirmedForDay[number]['parsed'] }
+                        | { kind: 'personal'; schedule: PersonalSchedule };
+                      const combined: LayoutItem<EventData>[] = [
+                        ...confirmedForDay.map(({ poll, parsed }) => ({
+                          start: parsed.startDateTime.getTime(),
+                          end: parsed.endDateTime.getTime(),
+                          data: { kind: 'confirmed' as const, poll, parsed },
+                        })),
+                        ...schedulesForDay.map(s => ({
+                          start: isoToDate(s.startDateTime).getTime(),
+                          end: isoToDate(s.endDateTime).getTime(),
+                          data: { kind: 'personal' as const, schedule: s },
+                        })),
+                      ];
+                      return layoutEvents(combined).map(({ data, col, totalCols }) => {
+                        const leftPct = (col / totalCols) * 100;
+                        const rightPct = ((totalCols - col - 1) / totalCols) * 100;
+                        const posStyle = { left: `calc(${leftPct}% + 1px)`, right: `calc(${rightPct}% + 1px)` };
 
-                    {/* 個人スケジュール（重複時は複数列表示） */}
-                    {layoutEvents(schedulesForDay).map(({ schedule, col, totalCols }) => {
-                      const isDragging = dragScheduleId === schedule.id;
-                      const displayStart = isoToDate(schedule.startDateTime);
-                      const displayEnd = isoToDate(schedule.endDateTime);
-                      const { top, height } = getEventStyle(displayStart, displayEnd);
-                      const isOwner = schedule.createdBy === currentUser.id;
-                      const linkedTask = schedule.taskId ? tasks.find(t => t.id === schedule.taskId) : null;
-                      const leftPct = (col / totalCols) * 100;
-                      const rightPct = ((totalCols - col - 1) / totalCols) * 100;
-
-                      return (
-                        <div
-                          key={schedule.id}
-                          className={cn(
-                            'absolute rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
-                            linkedTask ? 'bg-purple-500' : 'bg-blue-500',
-                            isDragging ? 'ring-2 ring-blue-300' : isOwner ? 'cursor-grab hover:opacity-90' : 'cursor-pointer hover:opacity-90',
-                          )}
-                          data-event
-                          style={{ top, height, minHeight: 20, left: `calc(${leftPct}% + 1px)`, right: `calc(${rightPct}% + 1px)` }}
-                          onPointerDown={isOwner ? (e) => startDrag(e, schedule, 'move', colIdx) : undefined}
-                          onClick={isDragging ? undefined : (e) => { e.stopPropagation(); setScheduleModal({ mode: 'edit', schedule }); }}
-                        >
-                          <div className="font-medium text-[11px] truncate pointer-events-none">{schedule.title}</div>
-                          {height > 30 && (
-                            <div className="text-blue-100 text-[10px] pointer-events-none">
-                              {format(displayStart, 'HH:mm')}〜{format(displayEnd, 'HH:mm')}
-                            </div>
-                          )}
-                          {schedule.memo && height > 30 && (
-                            <div className="text-blue-200 text-[10px] pointer-events-none flex items-center gap-0.5">
-                              <span>📝</span><span>メモあり</span>
-                            </div>
-                          )}
-                          {linkedTask && height > 42 && (
-                            <div className="text-purple-200 text-[10px] truncate pointer-events-none">📌{linkedTask.title}</div>
-                          )}
-                          {/* リサイズハンドル */}
-                          {isOwner && height > 24 && (
+                        if (data.kind === 'confirmed') {
+                          const { poll, parsed } = data;
+                          const { top, height } = getEventStyle(parsed.startDateTime, parsed.endDateTime);
+                          return (
                             <div
-                              className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize bg-gradient-to-t from-black/30 to-transparent flex items-end justify-center"
-                              onPointerDown={e => { e.stopPropagation(); startDrag(e, schedule, 'resize', colIdx); }}
+                              key={`poll-${poll.id}`}
+                              data-event
+                              className="absolute rounded-md px-1.5 py-1 text-white bg-green-600 shadow-sm cursor-pointer hover:opacity-90 overflow-hidden z-10 select-none"
+                              style={{ top, height, minHeight: 20, ...posStyle }}
+                              title={`${poll.title}（確定済み）`}
+                              onClick={e => e.stopPropagation()}
                             >
-                              <div className="w-6 h-1 bg-white/50 rounded-full mb-0.5" />
+                              <div className="font-medium text-[11px] truncate pointer-events-none">{poll.title}</div>
+                              {height > 30 && (
+                                <div className="text-green-100 text-[10px] pointer-events-none">{parsed.startTime}〜{parsed.endTime}</div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          );
+                        }
+
+                        const schedule = data.schedule;
+                        const isDragging = dragScheduleId === schedule.id;
+                        const displayStart = isoToDate(schedule.startDateTime);
+                        const displayEnd = isoToDate(schedule.endDateTime);
+                        const { top, height } = getEventStyle(displayStart, displayEnd);
+                        const isOwner = schedule.createdBy === currentUser.id;
+                        const linkedTask = schedule.taskId ? tasks.find(t => t.id === schedule.taskId) : null;
+
+                        return (
+                          <div
+                            key={`sched-${schedule.id}`}
+                            className={cn(
+                              'absolute rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
+                              linkedTask ? 'bg-purple-500' : 'bg-blue-500',
+                              isDragging ? 'ring-2 ring-blue-300' : isOwner ? 'cursor-grab hover:opacity-90' : 'cursor-pointer hover:opacity-90',
+                            )}
+                            data-event
+                            style={{ top, height, minHeight: 20, ...posStyle }}
+                            onPointerDown={isOwner ? (e) => startDrag(e, schedule, 'move', colIdx) : undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // ドラッグ直後のクリックは無視（onUp の直後 300ms）
+                              if (recentlyDraggedRef.current) return;
+                              setScheduleModal({ mode: 'edit', schedule });
+                            }}
+                          >
+                            <div className="font-medium text-[11px] truncate pointer-events-none">{schedule.title}</div>
+                            {height > 30 && (
+                              <div className="text-blue-100 text-[10px] pointer-events-none">
+                                {format(displayStart, 'HH:mm')}〜{format(displayEnd, 'HH:mm')}
+                              </div>
+                            )}
+                            {schedule.memo && height > 30 && (
+                              <div className="text-blue-200 text-[10px] pointer-events-none flex items-center gap-0.5">
+                                <span>📝</span><span>メモあり</span>
+                              </div>
+                            )}
+                            {linkedTask && height > 42 && (
+                              <div className="text-purple-200 text-[10px] truncate pointer-events-none">📌{linkedTask.title}</div>
+                            )}
+                            {/* リサイズハンドル */}
+                            {isOwner && height > 24 && (
+                              <div
+                                className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize bg-gradient-to-t from-black/30 to-transparent flex items-end justify-center"
+                                onPointerDown={e => { e.stopPropagation(); startDrag(e, schedule, 'resize', colIdx); }}
+                              >
+                                <div className="w-6 h-1 bg-white/50 rounded-full mb-0.5" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 );
               })}

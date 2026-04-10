@@ -471,13 +471,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const task = tasks.find(t => t.id === id);
     if (task) {
       const isCompleted = !task.isCompleted;
-      await updateDoc(doc(db, 'tasks', id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'tasks', id), {
         isCompleted,
         completedBy: isCompleted ? (currentUser?.id || null) : null,
         completedAt: isCompleted ? new Date().toISOString() : null,
         updatedBy: currentUser?.id || null,
         updatedAt: new Date().toISOString(),
       });
+      // タスク完了時：紐づくスケジュールをアーカイブ
+      if (isCompleted) {
+        const linkedSchedules = allPersonalSchedules.filter(s => s.taskId === id && !s.isArchived);
+        linkedSchedules.forEach(s => {
+          batch.update(doc(db, 'personalSchedules', s.id), {
+            isArchived: true,
+            archivedAt: new Date().toISOString(),
+          });
+        });
+      }
+      await batch.commit();
     }
   };
 
@@ -491,11 +503,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Soft-delete task (moves to trash)
   const deleteTask = async (id: string) => {
-    await updateDoc(doc(db, 'tasks', id), {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'tasks', id), {
       isDeleted: true,
       deletedAt: new Date().toISOString(),
       deletedBy: currentUser?.id || null,
     });
+    // タスク削除時：紐づくスケジュールをアーカイブ
+    const linkedSchedules = allPersonalSchedules.filter(s => s.taskId === id && !s.isArchived);
+    linkedSchedules.forEach(s => {
+      batch.update(doc(db, 'personalSchedules', s.id), {
+        isArchived: true,
+        archivedAt: new Date().toISOString(),
+      });
+    });
+    await batch.commit();
   };
 
   // Restore task from trash
@@ -513,6 +535,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const batch = writeBatch(db);
     taskMemos.forEach(memo => {
       batch.delete(doc(db, 'memos', memo.id));
+    });
+    // タスク完全削除時：紐づくスケジュールも完全削除
+    const linkedSchedules = allPersonalSchedules.filter(s => s.taskId === id);
+    linkedSchedules.forEach(s => {
+      batch.delete(doc(db, 'personalSchedules', s.id));
     });
     batch.delete(doc(db, 'tasks', id));
     await batch.commit();
