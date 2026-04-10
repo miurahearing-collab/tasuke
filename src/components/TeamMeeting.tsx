@@ -50,6 +50,38 @@ const setDayMemoLS = (userId: string, dateStr: string, text: string) => {
   }
 };
 
+// コンポーネント外定数（毎レンダリング生成を防ぐ）
+const HOURS_LIST = Array.from({ length: TOTAL_HOURS }, (_, i) => START_HOUR + i);
+const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+// ─── カスタム時間セレクト（30分刻み保証） ────────────────────────────
+const TimeSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const parts = value.split(':');
+  const h = parseInt(parts[0] ?? '10', 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={h}
+        onChange={e => onChange(`${pad(Number(e.target.value))}:${pad(m)}`)}
+        className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {ALL_HOURS.map(hh => <option key={hh} value={hh}>{pad(hh)}</option>)}
+      </select>
+      <span className="text-gray-500 font-medium">:</span>
+      <select
+        value={m}
+        onChange={e => onChange(`${pad(h)}:${pad(Number(e.target.value))}`)}
+        className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value={0}>00</option>
+        <option value={30}>30</option>
+      </select>
+    </div>
+  );
+};
+
 // ─── 型定義 ───────────────────────────────────────────────────────────
 interface DateTimeOption { date: string; startTime: string; endTime: string; }
 
@@ -145,21 +177,21 @@ const ScheduleModal = ({
               placeholder="スケジュールのタイトル" required />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-3 sm:col-span-1">
+          <div className="space-y-3">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">日付 *</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
-              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} step="1800"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">終了時間</label>
-              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} step="1800"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
+                <TimeSelect value={startTime} onChange={setStartTime} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">終了時間</label>
+                <TimeSelect value={endTime} onChange={setEndTime} />
+              </div>
             </div>
           </div>
 
@@ -273,9 +305,11 @@ export const TeamMeeting = () => {
 
   if (!currentUser) return null;
 
-  // ─── 計算値 ───────────────────────────────────────────────────
-  const myPolls = meetingPolls.filter(p =>
-    !p.isDeleted && (p.targetUserIds.includes(currentUser.id) || p.createdBy === currentUser.id)
+  // ─── 計算値（すべてuseMemoでキャッシュ） ────────────────────────
+  const myPolls = useMemo(() =>
+    meetingPolls.filter(p =>
+      !p.isDeleted && (p.targetUserIds.includes(currentUser.id) || p.createdBy === currentUser.id)
+    ), [meetingPolls, currentUser.id]
   );
 
   const confirmedMeetings = useMemo(
@@ -300,7 +334,40 @@ export const TeamMeeting = () => {
     Array.from({ length: 7 }, (_, i) => addDays(calendarWeekStart, i)),
     [calendarWeekStart]
   );
-  const hours = Array.from({ length: TOTAL_HOURS }, (_, i) => START_HOUR + i);
+
+  // 週ビュー用：日付ごとのスケジュールをMapでキャッシュ（毎レンダリング7回filter防止）
+  const schedulesPerDay = useMemo(() => {
+    const map = new Map<string, typeof mySchedules>();
+    weekDays.forEach(day => {
+      const key = format(day, 'yyyy-MM-dd');
+      map.set(key, mySchedules.filter(s => {
+        const schedStart = isoToDate(s.startDateTime);
+        return isSameDay(schedStart, day);
+      }));
+    });
+    return map;
+  }, [mySchedules, weekDays]);
+
+  const confirmedPerDay = useMemo(() => {
+    const map = new Map<string, typeof confirmedMeetings>();
+    weekDays.forEach(day => {
+      const key = format(day, 'yyyy-MM-dd');
+      map.set(key, confirmedMeetings.filter(m => isSameDay(m.parsed.startDateTime, day)));
+    });
+    return map;
+  }, [confirmedMeetings, weekDays]);
+
+  // 日付メモをまとめてキャッシュ（LocalStorage複数回読み取り防止）
+  const dayMemoMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    weekDays.forEach(day => {
+      const key = format(day, 'yyyy-MM-dd');
+      map[key] = getDayMemoLS(currentUser.id, key);
+    });
+    return map;
+    // memoVersionが変わったときも再計算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekDays, currentUser.id, memoVersion]);
 
   // ─── スクロールを9時に初期化 ──────────────────────────────────
   useEffect(() => {
@@ -426,15 +493,26 @@ export const TeamMeeting = () => {
   const renderWeekView = () => {
     const dayNames = ['月', '火', '水', '木', '金', '土', '日'];
 
-    // 各日のイベント取得
-    const getSchedulesForDay = (day: Date) =>
-      mySchedules.filter(s => {
-        const schedStart = dragScheduleId === s.id && dragTemp ? dragTemp.start : isoToDate(s.startDateTime);
-        return isSameDay(schedStart, day);
-      });
+    // Mapから取得（ドラッグ中は表示位置を上書き）
+    const getSchedulesForDay = (day: Date) => {
+      const key = format(day, 'yyyy-MM-dd');
+      const base = schedulesPerDay.get(key) || [];
+      if (!dragScheduleId || !dragTemp) return base;
+      // ドラッグ中のスケジュールは移動先の日に表示する
+      const dragging = mySchedules.find(s => s.id === dragScheduleId);
+      if (!dragging) return base;
+      const dragDay = format(dragTemp.start, 'yyyy-MM-dd');
+      if (dragDay === key) {
+        // この日にドラッグ中のスケジュールがなければ追加
+        return base.some(s => s.id === dragScheduleId) ? base : [...base, dragging];
+      } else {
+        // この日からドラッグで別の日へ移動した場合は除外
+        return base.filter(s => s.id !== dragScheduleId);
+      }
+    };
 
     const getConfirmedForDay = (day: Date) =>
-      confirmedMeetings.filter(m => isSameDay(m.parsed.startDateTime, day));
+      confirmedPerDay.get(format(day, 'yyyy-MM-dd')) || [];
 
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 260px)' }}>
@@ -457,7 +535,8 @@ export const TeamMeeting = () => {
           <div className="w-10 shrink-0" />
           {weekDays.map((day, i) => {
             const dateStr = format(day, 'yyyy-MM-dd');
-            const hasMemo = !!getDayMemoLS(currentUser.id, dateStr);
+            const memoText = dayMemoMap[dateStr] ?? '';
+            const hasMemo = !!memoText;
             const isEditing = editingMemoDate === dateStr;
             return (
               <div
@@ -503,7 +582,7 @@ export const TeamMeeting = () => {
                       {hasMemo ? (
                         <span className="flex items-start gap-0.5">
                           <StickyNote className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                          <span className="truncate">{getDayMemoLS(currentUser.id, dateStr)}</span>
+                          <span className="truncate">{memoText}</span>
                         </span>
                       ) : (
                         <span className="opacity-50">＋</span>
@@ -521,7 +600,7 @@ export const TeamMeeting = () => {
           <div className="flex" style={{ height: `${TOTAL_HOURS * HOUR_HEIGHT}px` }}>
             {/* 時間ラベル列 */}
             <div className="w-10 shrink-0 relative">
-              {hours.map(hour => (
+              {HOURS_LIST.map(hour => (
                 <div
                   key={hour}
                   className="absolute right-1 text-[10px] text-gray-400 text-right leading-none"
@@ -544,45 +623,39 @@ export const TeamMeeting = () => {
                   <div
                     key={colIdx}
                     className={cn(
-                      'flex-1 relative border-l border-gray-100',
+                      'flex-1 relative border-l border-gray-100 cursor-pointer',
                       isSat && 'bg-blue-50/20',
                       isSun && 'bg-red-50/20',
                     )}
+                    onClick={e => {
+                      // イベントブロック上のクリックは無視
+                      if ((e.target as HTMLElement).closest('[data-event]')) return;
+                      // 列の論理的なY座標（スクロール込み）
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const colRelY = e.clientY - rect.top;
+                      const rawMin = (colRelY / HOUR_HEIGHT) * 60;
+                      const snapped = Math.round(rawMin / CREATE_SNAP_MINUTES) * CREATE_SNAP_MINUTES;
+                      const totalMin = clamp(snapped, 0, TOTAL_HOURS * 60 - 30);
+                      const hour = START_HOUR + Math.floor(totalMin / 60);
+                      const min = totalMin % 60;
+                      setScheduleModal({
+                        mode: 'create',
+                        defaultDate: format(day, 'yyyy-MM-dd'),
+                        defaultStartHour: hour,
+                        defaultStartMin: min,
+                      });
+                    }}
                   >
                     {/* 横線（時間ライン） */}
-                    {hours.map(hour => (
+                    {HOURS_LIST.map(hour => (
                       <React.Fragment key={hour}>
-                        {/* 毎時線 */}
                         <div
-                          className="absolute left-0 right-0 border-t border-gray-100"
+                          className="absolute left-0 right-0 border-t border-gray-100 pointer-events-none"
                           style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT}px` }}
                         />
-                        {/* 30分線（点線） */}
                         <div
-                          className="absolute left-0 right-0 border-t border-dashed border-gray-100"
+                          className="absolute left-0 right-0 border-t border-dashed border-gray-100 pointer-events-none"
                           style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT + HOUR_HEIGHT / 2}px` }}
-                        />
-                        {/* クリックゾーン：上半分 (:00) */}
-                        <div
-                          className="absolute left-0 right-0 cursor-pointer hover:bg-blue-50/40 transition-colors"
-                          style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT / 2}px` }}
-                          onClick={() => setScheduleModal({
-                            mode: 'create',
-                            defaultDate: format(day, 'yyyy-MM-dd'),
-                            defaultStartHour: hour,
-                            defaultStartMin: 0,
-                          })}
-                        />
-                        {/* クリックゾーン：下半分 (:30) */}
-                        <div
-                          className="absolute left-0 right-0 cursor-pointer hover:bg-blue-50/40 transition-colors"
-                          style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT + HOUR_HEIGHT / 2}px`, height: `${HOUR_HEIGHT / 2}px` }}
-                          onClick={() => setScheduleModal({
-                            mode: 'create',
-                            defaultDate: format(day, 'yyyy-MM-dd'),
-                            defaultStartHour: hour,
-                            defaultStartMin: 30,
-                          })}
                         />
                       </React.Fragment>
                     ))}
@@ -607,9 +680,11 @@ export const TeamMeeting = () => {
                       return (
                         <div
                           key={poll.id}
+                          data-event
                           className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 text-white bg-green-600 shadow-sm cursor-pointer hover:opacity-90 overflow-hidden z-10 select-none"
                           style={{ top, height, minHeight: 20 }}
                           title={`${poll.title}（確定済み）`}
+                          onClick={e => e.stopPropagation()}
                         >
                           <div className="font-medium text-[11px] truncate">{poll.title}</div>
                           <div className="text-green-100 text-[10px]">{parsed.startTime}〜{parsed.endTime}</div>
@@ -634,6 +709,7 @@ export const TeamMeeting = () => {
                             linkedTask ? 'bg-purple-500' : 'bg-blue-500',
                             isDragging ? 'opacity-60 ring-2 ring-blue-300' : isOwner ? 'cursor-grab active:cursor-grabbing hover:opacity-90' : 'cursor-pointer hover:opacity-90',
                           )}
+                          data-event
                           style={{ top, height, minHeight: 20 }}
                           onPointerDown={isOwner ? (e) => startDrag(e, schedule, 'move', colIdx) : undefined}
                           onClick={isDragging ? undefined : (e) => { e.stopPropagation(); setScheduleModal({ mode: 'edit', schedule }); }}
@@ -710,7 +786,7 @@ export const TeamMeeting = () => {
             const inMonth = isSameMonth(day, calendarMonth);
             const dow = idx % 7; // 0=Mon..6=Sun
             const dateStr = format(day, 'yyyy-MM-dd');
-            const hasMemo = !!getDayMemoLS(currentUser.id, dateStr);
+            const hasMemo = !!localStorage.getItem(DAY_MEMO_KEY(currentUser.id, dateStr));
             return (
               <div
                 key={day.toISOString()}
