@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand Green (#006239) for primary actions (replacing blue) */
+  --color-blue-50: #e6f0eb;
+  --color-blue-100: #cce0d6;
+  --color-blue-200: #99c2ad;
+  --color-blue-300: #66a385;
+  --color-blue-400: #33855c;
+  --color-blue-500: #007a47;
+  --color-blue-600: #006239; /* Main Brand Green */
+  --color-blue-700: #004d2c;
+  --color-blue-800: #003820;
+  --color-blue-900: #002414;
+
+  /* Map green to the same Brand Green palette to avoid clashing greens */
+  --color-green-50: #e6f0eb;
+  --color-green-100: #cce0d6;
+  --color-green-200: #99c2ad;
+  --color-green-300: #66a385;
+  --color-green-400: #33855c;
+  --color-green-500: #007a47;
+  --color-green-600: #006239;
+  --color-green-700: #004d2c;
+  --color-green-800: #003820;
+  --color-green-900: #002414;
+
+  /* Brand Beige and Gray for neutrals (replacing gray) */
+  --color-gray-50: #FCF9F4; /* Brand Beige */
+  --color-gray-100: #f2ece4;
+  --color-gray-200: #e6ded4;
+  --color-gray-300: #d1c8bd;
+  --color-gray-400: #a8a49e;
+  --color-gray-500: #828280; /* Brand Gray */
+  --color-gray-600: #636361;
+  --color-gray-700: #454544;
+  --color-gray-800: #2b2b2a;
+  --color-gray-900: #1E1E1E; /* Brand Black */
+}
+
+body {
+  background-color: var(--color-gray-50);
+  color: var(--color-gray-900);
+}

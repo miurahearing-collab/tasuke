@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "member"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Task category",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "isAdminOnly": { "type": "boolean" }
+      },
+      "required": ["name", "isAdminOnly"]
+    },
+    "Initiative": {
+      "title": "Initiative",
+      "description": "Project initiative",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "assigneeIds": { "type": "array", "items": { "type": "string" } },
+        "assigneeId": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "categoryId", "isArchived", "createdAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Task within an initiative",
+      "type": "object",
+      "properties": {
+        "initiativeId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assigneeIds": { "type": "array", "items": { "type": "string" } },
+        "assigneeId": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "isCompleted": { "type": "boolean" },
+        "readStatus": { "type": "object" }
+      },
+      "required": ["initiativeId", "title", "startDate", "endDate", "isCompleted"]
+    },
+    "TaskMemo": {
+      "title": "TaskMemo",
+      "description": "Memo for a task",
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" },
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["taskId", "userId", "content", "createdAt"]
+    },
+    "MeetingPoll": {
+      "title": "MeetingPoll",
+      "description": "Meeting poll",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "targetUserIds": { "type": "array", "items": { "type": "string" } },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "votes": { "type": "object" },
+        "isDeleted": { "type": "boolean" },
+        "deletedAt": { "type": "string" }
+      },
+      "required": ["title", "createdBy", "createdAt", "targetUserIds", "options", "votes"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Categories"
+    },
+    "/initiatives/{initiativeId}": {
+      "schema": { "$ref": "#/entities/Initiative" },
+      "description": "Initiatives"
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Tasks"
+    },
+    "/memos/{memoId}": {
+      "schema": { "$ref": "#/entities/TaskMemo" },
+      "description": "Task memos"
+    },
+    "/meetingPolls/{pollId}": {
+      "schema": { "$ref": "#/entities/MeetingPoll" },
+      "description": "Meeting polls"
+    }
+  }
+}
