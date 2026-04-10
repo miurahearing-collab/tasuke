@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAppContext } from '../store/AppContext';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
-import { RotateCcw, Trash2, Calendar } from 'lucide-react';
+import { RotateCcw, Trash2, Calendar, CheckSquare, Square } from 'lucide-react';
 
 type Tab = 'archivedInitiatives' | 'deletedInitiatives' | 'deletedTasks' | 'polls' | 'schedules';
 
@@ -14,12 +14,15 @@ export const Archive = () => {
     unarchiveInitiative, restoreInitiative, permanentDeleteInitiative,
     restoreTask, permanentDeleteTask,
     meetingPolls, restoreMeetingPoll, deleteMeetingPoll,
-    archivedSchedules, permanentDeletePersonalSchedule,
+    archivedSchedules, permanentDeletePersonalSchedule, bulkPermanentDeletePersonalSchedules,
   } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<Tab>('archivedInitiatives');
   const [confirmTarget, setConfirmTarget] = useState<{ type: string; id: string } | null>(null);
   const [pollToDelete, setPollToDelete] = useState<string | null>(null);
+  // スケジュール一括削除用
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set());
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -367,51 +370,145 @@ export const Archive = () => {
           {archivedSchedules.length === 0 ? (
             <div className="p-12 text-center text-gray-500">アーカイブしたスケジュールはありません。</div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {archivedSchedules.map(schedule => {
-                const start = new Date(schedule.startDateTime);
-                const end = new Date(schedule.endDateTime);
-                const participantNames = schedule.participantIds.map(id => getUserName(id)).join(', ');
-                return (
-                  <React.Fragment key={schedule.id}>
-                    <div className="p-5 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="text-base font-semibold text-gray-900 mb-1">{schedule.title}</h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3.5 h-3.5" />
-                              {format(start, 'yyyy/MM/dd HH:mm')}〜{format(end, 'HH:mm')}
+            <>
+              {/* 一括操作バー */}
+              <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 font-medium">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={selectedScheduleIds.size === archivedSchedules.length}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setSelectedScheduleIds(new Set(archivedSchedules.map(s => s.id)));
+                      } else {
+                        setSelectedScheduleIds(new Set());
+                      }
+                    }}
+                  />
+                  {selectedScheduleIds.size === archivedSchedules.length
+                    ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                    : <Square className="w-4 h-4 text-gray-400" />}
+                  すべて選択
+                  {selectedScheduleIds.size > 0 && (
+                    <span className="ml-1 text-xs text-blue-600">（{selectedScheduleIds.size}件選択中）</span>
+                  )}
+                </label>
+                <button
+                  onClick={() => setShowBulkConfirm(true)}
+                  disabled={selectedScheduleIds.size === 0}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                    selectedScheduleIds.size > 0
+                      ? 'text-red-600 bg-red-50 hover:bg-red-100'
+                      : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                  )}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  選択項目を一括削除
+                </button>
+              </div>
+
+              {/* 一括削除確認 */}
+              {showBulkConfirm && (
+                <div className="px-5 py-4 bg-red-50 border-b border-red-200">
+                  <p className="text-sm text-red-800 mb-3">
+                    選択した {selectedScheduleIds.size} 件のスケジュールを完全に削除しますか？この操作は取り消せません。
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        await bulkPermanentDeletePersonalSchedules([...selectedScheduleIds]);
+                        setSelectedScheduleIds(new Set());
+                        setShowBulkConfirm(false);
+                      }}
+                      className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700"
+                    >
+                      削除する
+                    </button>
+                    <button
+                      onClick={() => setShowBulkConfirm(false)}
+                      className="px-3 py-1.5 bg-white text-gray-700 border border-gray-300 text-sm font-medium rounded hover:bg-gray-50"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="divide-y divide-gray-200">
+                {archivedSchedules.map(schedule => {
+                  const start = new Date(schedule.startDateTime);
+                  const end = new Date(schedule.endDateTime);
+                  const participantNames = schedule.participantIds.map(id => getUserName(id)).join(', ');
+                  const isChecked = selectedScheduleIds.has(schedule.id);
+                  return (
+                    <React.Fragment key={schedule.id}>
+                      <div
+                        className={cn(
+                          'p-5 transition-colors',
+                          isChecked ? 'bg-red-50' : 'hover:bg-gray-50'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          {/* チェックボックス */}
+                          <label className="flex items-start gap-3 cursor-pointer flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={isChecked}
+                              onChange={e => {
+                                setSelectedScheduleIds(prev => {
+                                  const next = new Set(prev);
+                                  e.target.checked ? next.add(schedule.id) : next.delete(schedule.id);
+                                  return next;
+                                });
+                              }}
+                            />
+                            <span className="mt-0.5 shrink-0">
+                              {isChecked
+                                ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                                : <Square className="w-4 h-4 text-gray-400" />}
                             </span>
-                            <span>参加者: {participantNames}</span>
-                            {schedule.memo && <span className="truncate max-w-xs">メモ: {schedule.memo}</span>}
-                            {schedule.archivedAt && (
-                              <span>アーカイブ日: {format(new Date(schedule.archivedAt), 'yyyy/MM/dd')}</span>
-                            )}
+                            <div className="min-w-0">
+                              <h3 className="text-base font-semibold text-gray-900 mb-1">{schedule.title}</h3>
+                              <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  {format(start, 'yyyy/MM/dd HH:mm')}〜{format(end, 'HH:mm')}
+                                </span>
+                                <span>参加者: {participantNames}</span>
+                                {schedule.memo && <span className="truncate max-w-xs">メモ: {schedule.memo}</span>}
+                                {schedule.archivedAt && (
+                                  <span>アーカイブ日: {format(new Date(schedule.archivedAt), 'yyyy/MM/dd')}</span>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+                          {/* 個別削除ボタン */}
+                          <div className="shrink-0">
+                            <button
+                              onClick={() => setConfirmTarget({ type: 'schedule', id: schedule.id })}
+                              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              完全に削除
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setConfirmTarget({ type: 'schedule', id: schedule.id })}
-                            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            完全に削除
-                          </button>
-                        </div>
+                        {confirmTarget?.type === 'schedule' && confirmTarget.id === schedule.id && (
+                          <ConfirmDialog
+                            message="このスケジュールを完全に削除しますか？この操作は取り消せません。"
+                            onConfirm={() => { permanentDeletePersonalSchedule(schedule.id); setConfirmTarget(null); }}
+                            onCancel={() => setConfirmTarget(null)}
+                          />
+                        )}
                       </div>
-                      {confirmTarget?.type === 'schedule' && confirmTarget.id === schedule.id && (
-                        <ConfirmDialog
-                          message="このスケジュールを完全に削除しますか？この操作は取り消せません。"
-                          onConfirm={() => { permanentDeletePersonalSchedule(schedule.id); setConfirmTarget(null); }}
-                          onCancel={() => setConfirmTarget(null)}
-                        />
-                      )}
-                    </div>
-                  </React.Fragment>
-                );
-              })}
-            </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}

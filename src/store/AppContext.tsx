@@ -144,6 +144,7 @@ interface AppContextType {
   updatePersonalSchedule: (id: string, data: { title?: string; memo?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => Promise<void>;
   archivePersonalSchedule: (id: string) => Promise<void>;
   permanentDeletePersonalSchedule: (id: string) => Promise<void>;
+  bulkPermanentDeletePersonalSchedules: (ids: string[]) => Promise<void>;
   updateUser: (userId: string, name: string, role: Role, visibleCategoryIds?: string[]) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -662,6 +663,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await deleteDoc(doc(db, 'personalSchedules', id));
   };
 
+  const bulkPermanentDeletePersonalSchedules = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const batch = writeBatch(db);
+    ids.forEach(id => batch.delete(doc(db, 'personalSchedules', id)));
+    await batch.commit();
+  };
+
   if (!isAuthReady) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -681,7 +689,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addMeetingPoll, voteMeetingPoll, updateMeetingPoll, moveToTrashMeetingPoll, restoreMeetingPoll, deleteMeetingPoll,
       confirmMeetingPoll, cancelConfirmMeetingPoll,
       personalSchedules, archivedSchedules,
-      addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule, permanentDeletePersonalSchedule,
+      addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule, permanentDeletePersonalSchedule, bulkPermanentDeletePersonalSchedules,
       updateUser, logout
     }}>
       {children}
