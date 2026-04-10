@@ -4,7 +4,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
 import { RotateCcw, Trash2, Calendar } from 'lucide-react';
 
-type Tab = 'archivedInitiatives' | 'deletedInitiatives' | 'deletedTasks' | 'polls';
+type Tab = 'archivedInitiatives' | 'deletedInitiatives' | 'deletedTasks' | 'polls' | 'schedules';
 
 export const Archive = () => {
   const {
@@ -14,6 +14,7 @@ export const Archive = () => {
     unarchiveInitiative, restoreInitiative, permanentDeleteInitiative,
     restoreTask, permanentDeleteTask,
     meetingPolls, restoreMeetingPoll, deleteMeetingPoll,
+    archivedSchedules, permanentDeletePersonalSchedule,
   } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<Tab>('archivedInitiatives');
@@ -51,6 +52,7 @@ export const Archive = () => {
     { id: 'deletedInitiatives', label: '削除した施策', count: filteredDeletedInitiatives.length },
     { id: 'deletedTasks', label: '削除したタスク', count: deletedTasks.length },
     { id: 'polls', label: '削除した日程調整', count: deletedPolls.length },
+    { id: 'schedules', label: 'アーカイブしたスケジュール', count: archivedSchedules.length },
   ];
 
   const ConfirmDialog = ({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) => (
@@ -355,6 +357,60 @@ export const Archive = () => {
                   )}
                 </React.Fragment>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* ── アーカイブしたスケジュール ── */}
+      {activeTab === 'schedules' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {archivedSchedules.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">アーカイブしたスケジュールはありません。</div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {archivedSchedules.map(schedule => {
+                const start = new Date(schedule.startDateTime);
+                const end = new Date(schedule.endDateTime);
+                const participantNames = schedule.participantIds.map(id => getUserName(id)).join(', ');
+                return (
+                  <React.Fragment key={schedule.id}>
+                    <div className="p-5 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900 mb-1">{schedule.title}</h3>
+                          <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5" />
+                              {format(start, 'yyyy/MM/dd HH:mm')}〜{format(end, 'HH:mm')}
+                            </span>
+                            <span>参加者: {participantNames}</span>
+                            {schedule.memo && <span className="truncate max-w-xs">メモ: {schedule.memo}</span>}
+                            {schedule.archivedAt && (
+                              <span>アーカイブ日: {format(new Date(schedule.archivedAt), 'yyyy/MM/dd')}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setConfirmTarget({ type: 'schedule', id: schedule.id })}
+                            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            完全に削除
+                          </button>
+                        </div>
+                      </div>
+                      {confirmTarget?.type === 'schedule' && confirmTarget.id === schedule.id && (
+                        <ConfirmDialog
+                          message="このスケジュールを完全に削除しますか？この操作は取り消せません。"
+                          onConfirm={() => { permanentDeletePersonalSchedule(schedule.id); setConfirmTarget(null); }}
+                          onCancel={() => setConfirmTarget(null)}
+                        />
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
-import { Category, Initiative, Task, TaskMemo, User, Role, MeetingPoll, VoteStatus, RecurrenceType } from '../types';
+import { Category, Initiative, Task, TaskMemo, User, Role, MeetingPoll, VoteStatus, RecurrenceType, PersonalSchedule } from '../types';
 import { db, auth } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, query, getDoc, deleteField, writeBatch } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -136,6 +136,14 @@ interface AppContextType {
   moveToTrashMeetingPoll: (pollId: string) => Promise<void>;
   restoreMeetingPoll: (pollId: string) => Promise<void>;
   deleteMeetingPoll: (pollId: string) => Promise<void>;
+  confirmMeetingPoll: (pollId: string, option: string) => Promise<void>;
+  cancelConfirmMeetingPoll: (pollId: string) => Promise<void>;
+  personalSchedules: PersonalSchedule[];
+  archivedSchedules: PersonalSchedule[];
+  addPersonalSchedule: (data: { title: string; memo?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => Promise<void>;
+  updatePersonalSchedule: (id: string, data: { title?: string; memo?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => Promise<void>;
+  archivePersonalSchedule: (id: string) => Promise<void>;
+  permanentDeletePersonalSchedule: (id: string) => Promise<void>;
   updateUser: (userId: string, name: string, role: Role, visibleCategoryIds?: string[]) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -150,6 +158,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [memos, setMemos] = useState<TaskMemo[]>([]);
   const [meetingPolls, setMeetingPolls] = useState<MeetingPoll[]>([]);
+  const [allPersonalSchedules, setAllPersonalSchedules] = useState<PersonalSchedule[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   // Track which recurring tasks we've already reset (to avoid re-triggering)
   const resetTaskIdsRef = useRef<Set<string>>(new Set());
@@ -181,6 +190,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Soft-deleted tasks
   const deletedTasks = React.useMemo(() => allTasks.filter(t => t.isDeleted), [allTasks]);
+
+  // 自分が見えるスケジュール（作成者または参加者）
+  const personalSchedules = React.useMemo(() =>
+    allPersonalSchedules.filter(s =>
+      !s.isArchived &&
+      (s.createdBy === currentUser?.id || s.participantIds.includes(currentUser?.id || ''))
+    ), [allPersonalSchedules, currentUser]);
+
+  const archivedSchedules = React.useMemo(() =>
+    allPersonalSchedules.filter(s =>
+      s.isArchived &&
+      (s.createdBy === currentUser?.id || s.participantIds.includes(currentUser?.id || ''))
+    ), [allPersonalSchedules, currentUser]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -270,6 +292,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const unsubPolls = onSnapshot(collection(db, 'meetingPolls'), (snapshot) => {
       setMeetingPolls(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingPoll)));
     });
+    const unsubPersonalSchedules = onSnapshot(collection(db, 'personalSchedules'), (snapshot) => {
+      setAllPersonalSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PersonalSchedule)));
+    });
 
     return () => {
       unsubUsers();
@@ -278,6 +303,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       unsubTasks();
       unsubMemos();
       unsubPolls();
+      unsubPersonalSchedules();
     };
   }, [isAuthReady, currentUser]);
 
@@ -560,6 +586,55 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await deleteDoc(doc(db, 'meetingPolls', pollId));
   };
 
+  const confirmMeetingPoll = async (pollId: string, option: string) => {
+    await updateDoc(doc(db, 'meetingPolls', pollId), {
+      confirmedOption: option,
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: currentUser?.id || null,
+    });
+  };
+
+  const cancelConfirmMeetingPoll = async (pollId: string) => {
+    await updateDoc(doc(db, 'meetingPolls', pollId), {
+      confirmedOption: deleteField(),
+      confirmedAt: deleteField(),
+      confirmedBy: deleteField(),
+    });
+  };
+
+  const addPersonalSchedule = async (data: { title: string; memo?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
+    if (!currentUser) return;
+    const newRef = doc(collection(db, 'personalSchedules'));
+    const scheduleData: any = {
+      title: data.title,
+      createdBy: currentUser.id,
+      createdAt: new Date().toISOString(),
+      participantIds: data.participantIds,
+      startDateTime: data.startDateTime,
+      endDateTime: data.endDateTime,
+    };
+    if (data.memo !== undefined) scheduleData.memo = data.memo;
+    if (data.taskId) scheduleData.taskId = data.taskId;
+    await setDoc(newRef, scheduleData);
+  };
+
+  const updatePersonalSchedule = async (id: string, data: { title?: string; memo?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => {
+    const updateData: any = { ...data, updatedAt: new Date().toISOString() };
+    Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
+    await updateDoc(doc(db, 'personalSchedules', id), updateData);
+  };
+
+  const archivePersonalSchedule = async (id: string) => {
+    await updateDoc(doc(db, 'personalSchedules', id), {
+      isArchived: true,
+      archivedAt: new Date().toISOString(),
+    });
+  };
+
+  const permanentDeletePersonalSchedule = async (id: string) => {
+    await deleteDoc(doc(db, 'personalSchedules', id));
+  };
+
   if (!isAuthReady) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -576,7 +651,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addTask, addTasks, updateTask, toggleTaskCompletion, updateTaskDescription,
       deleteTask, restoreTask, permanentDeleteTask,
       addMemo, deleteMemo, markTaskAsRead,
-      addMeetingPoll, voteMeetingPoll, updateMeetingPoll, moveToTrashMeetingPoll, restoreMeetingPoll, deleteMeetingPoll, updateUser, logout
+      addMeetingPoll, voteMeetingPoll, updateMeetingPoll, moveToTrashMeetingPoll, restoreMeetingPoll, deleteMeetingPoll,
+      confirmMeetingPoll, cancelConfirmMeetingPoll,
+      personalSchedules, archivedSchedules,
+      addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule, permanentDeletePersonalSchedule,
+      updateUser, logout
     }}>
       {children}
     </AppContext.Provider>

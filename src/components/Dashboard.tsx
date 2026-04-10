@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { Plus, ArrowLeft, CheckSquare, User, Trash2, Filter } from 'lucide-react';
+import { Plus, ArrowLeft, CheckSquare, User, Trash2, Filter, CalendarPlus } from 'lucide-react';
 
 import { GanttChart } from './GanttChart';
 import { InitiativeModal } from './InitiativeModal';
@@ -8,7 +8,7 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { cn } from '../lib/utils';
 
 export const Dashboard = () => {
-  const { currentUser, categories, initiatives, tasks, users, updateInitiative, archiveInitiative, deleteInitiative } = useAppContext();
+  const { currentUser, categories, initiatives, tasks, users, updateInitiative, archiveInitiative, deleteInitiative, personalSchedules } = useAppContext();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(currentUser?.id || 'all');
   const [isInitiativeModalOpen, setIsInitiativeModalOpen] = useState(false);
@@ -23,6 +23,23 @@ export const Dashboard = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [taskFilter, setTaskFilter] = useState<'incomplete' | 'all'>('incomplete');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<'initiatives' | 'unscheduled'>('initiatives');
+
+  // スケジュール未登録タスク（自分担当・未完了・スケジュール未連携）
+  const unscheduledTasks = useMemo(() => {
+    if (!currentUser) return [];
+    return tasks.filter(t => {
+      if (t.isCompleted || t.isDeleted) return false;
+      if (!t.assigneeIds?.includes(currentUser.id) && t.assigneeId !== currentUser.id) return false;
+      // 自分が作成者または参加者のスケジュールにtaskIdが設定されているか確認
+      const isScheduled = personalSchedules.some(s =>
+        s.taskId === t.id &&
+        !s.isArchived &&
+        (s.createdBy === currentUser.id || s.participantIds.includes(currentUser.id))
+      );
+      return !isScheduled;
+    });
+  }, [tasks, personalSchedules, currentUser]);
 
   // Filter initiatives based on user role, selected category, and assignee
   const visibleInitiatives = initiatives.filter(init => {
@@ -250,6 +267,32 @@ export const Dashboard = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
           <h2 className="text-2xl font-bold text-gray-900 shrink-0">ダッシュボード</h2>
+          {/* メインビュー切り替え */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => setMainView('initiatives')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                mainView === 'initiatives' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              施策一覧
+            </button>
+            <button
+              onClick={() => setMainView('unscheduled')}
+              className={cn(
+                'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                mainView === 'unscheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              スケジュール未登録
+              {unscheduledTasks.length > 0 && (
+                <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                  {unscheduledTasks.length}
+                </span>
+              )}
+            </button>
+          </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <select
               value={selectedCategoryId}
@@ -285,7 +328,42 @@ export const Dashboard = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* スケジュール未登録ビュー */}
+      {mainView === 'unscheduled' && (
+        <div className="space-y-3">
+          {unscheduledTasks.length === 0 ? (
+            <div className="col-span-full p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
+              <CalendarPlus className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              スケジュール未登録のタスクはありません。
+            </div>
+          ) : (
+            unscheduledTasks.map(task => {
+              const init = initiatives.find(i => i.id === task.initiativeId);
+              return (
+                <div
+                  key={task.id}
+                  className="bg-white px-4 py-3 rounded-xl border border-gray-200 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{task.title}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">施策: {init?.title || '不明'} ／ 期限: {task.endDate.replace(/-/g, '/')}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setSelectedTaskId(task.id)}
+                      className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      詳細
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {mainView === 'initiatives' && (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {visibleInitiatives.length === 0 ? (
           <div className="col-span-full p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
             表示できる施策がありません。
@@ -330,7 +408,7 @@ export const Dashboard = () => {
             );
           })
         )}
-      </div>
+      </div>)}
 
       {isInitiativeModalOpen && (
         <InitiativeModal onClose={() => setIsInitiativeModalOpen(false)} />

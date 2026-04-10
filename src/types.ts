@@ -73,6 +73,20 @@ export interface TaskMemo {
   createdAt: string;
 }
 
+export interface PersonalSchedule {
+  id: string;
+  title: string;
+  memo?: string; // メモ、オンラインMTG URL 等
+  createdBy: string;
+  createdAt: string;
+  participantIds: string[]; // 作成者を含む
+  startDateTime: string; // ISO string
+  endDateTime: string;   // ISO string
+  taskId?: string;       // 連携タスクID
+  isArchived?: boolean;
+  archivedAt?: string;
+}
+
 export type VoteStatus = 'ok' | 'fair' | 'ng' | 'none';
 
 export interface MeetingPoll {
@@ -82,8 +96,11 @@ export interface MeetingPoll {
   createdBy: string;
   createdAt: string;
   targetUserIds: string[];
-  options: string[]; // e.g., "4/10 10:00-11:00"
+  options: string[]; // e.g., "2024/04/10 10:00-11:00"
   votes: Record<string, Record<string, VoteStatus>>; // userId -> option -> status
   isDeleted?: boolean;
   deletedAt?: string;
+  confirmedOption?: string; // e.g., "2024/04/10 10:00-11:00"
+  confirmedAt?: string;
+  confirmedBy?: string;
 }

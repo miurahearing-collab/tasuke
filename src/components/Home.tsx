@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../store/AppContext';
 import { LayoutDashboard, Calendar, Clock, CheckSquare, AlertCircle, AlertTriangle, MessageSquare, ArrowUpDown, SortAsc } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -8,6 +8,17 @@ import { TaskDetailModal } from './TaskDetailModal';
 interface HomeProps {
   setCurrentScreen: (screen: 'dashboard' | 'archive' | 'settings' | 'meeting' | 'reservation' | 'home' | 'evaluation') => void;
 }
+
+// Parse option string like "2024/04/10 10:00-11:00"
+const parseOptionStr = (option: string) => {
+  const match = option.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, sh, sm, eh, em] = match;
+  const dateStr = `${year}/${month}/${day}`;
+  const startDateTime = new Date(Number(year), Number(month) - 1, Number(day), Number(sh), Number(sm));
+  const endDateTime = new Date(Number(year), Number(month) - 1, Number(day), Number(eh), Number(em));
+  return { dateStr, startDateTime, endDateTime, startTime: `${sh}:${sm}`, endTime: `${eh}:${em}` };
+};
 
 export const Home = ({ setCurrentScreen }: HomeProps) => {
   const { currentUser, initiatives, tasks, memos, meetingPolls, categories } = useAppContext();
@@ -51,6 +62,20 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
     !i.isArchived &&
     (i.assigneeIds?.includes(currentUser.id) || i.assigneeId === currentUser.id || tasks.some(t => t.initiativeId === i.id && (t.assigneeIds?.includes(currentUser.id) || t.assigneeId === currentUser.id)))
   );
+
+  // Confirmed meetings where I'm a target member, upcoming only, max 3
+  const confirmedMeetings = useMemo(() => {
+    return meetingPolls
+      .filter(p => !p.isDeleted && p.confirmedOption && p.targetUserIds.includes(currentUser.id))
+      .map(p => {
+        const parsed = parseOptionStr(p.confirmedOption!);
+        if (!parsed) return null;
+        return { poll: p, ...parsed };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null && startOfDay(m.startDateTime) >= today)
+      .sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())
+      .slice(0, 3);
+  }, [meetingPolls, currentUser.id, today]);
 
   // Unanswered Meeting Polls
   const unansweredPolls = meetingPolls.filter(poll => {
@@ -105,7 +130,7 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
           <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
             <Calendar className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <span className="font-medium text-gray-900 text-[10px] sm:text-base leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis w-full">日程調整</span>
+          <span className="font-medium text-gray-900 text-[10px] sm:text-base leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis w-full">スケジューラー</span>
         </button>
         <button
           onClick={() => setCurrentScreen('reservation')}
@@ -316,6 +341,32 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
               )}
             </div>
           </section>
+
+          {/* 確定した日程 */}
+          {confirmedMeetings.length > 0 && (
+            <section>
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-green-500" />
+                確定した日程
+                <span className="bg-green-100 text-green-700 text-xs py-0.5 px-2 rounded-full">{confirmedMeetings.length}件</span>
+              </h3>
+              <div className="space-y-3">
+                {confirmedMeetings.map(({ poll, dateStr, startTime, endTime }) => (
+                  <button
+                    key={poll.id}
+                    onClick={() => setCurrentScreen('meeting')}
+                    className="w-full text-left bg-green-50/50 p-4 rounded-xl border border-green-200 hover:bg-green-50 transition-colors flex items-center justify-between group"
+                  >
+                    <div className="min-w-0">
+                      <h4 className="font-medium text-gray-900 group-hover:text-green-700 transition-colors line-clamp-1">{poll.title}</h4>
+                      <p className="text-sm text-gray-500 mt-1">{dateStr} {startTime}〜{endTime}</p>
+                    </div>
+                    <span className="text-green-600 text-sm font-medium shrink-0 ml-3">確定済み</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Right Column */}

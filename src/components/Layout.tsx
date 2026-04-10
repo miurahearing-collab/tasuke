@@ -19,7 +19,7 @@ export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProp
     { name: 'ホーム', id: 'home', icon: LayoutDashboard, group: 'メイン' },
     { name: 'ダッシュボード', id: 'dashboard', icon: LayoutDashboard, group: 'メイン' },
     { name: 'アーカイブ', id: 'archive', icon: Archive, group: 'メイン' },
-    { name: '日程調整', id: 'meeting', icon: Calendar, group: 'ミーティング' },
+    { name: 'スケジューラー', id: 'meeting', icon: Calendar, group: 'ミーティング' },
     { name: '打ち合わせ予約', id: 'reservation', icon: Clock, group: 'ミーティング' },
     ...(currentUser.role === 'admin' ? [
       { name: '評価ダッシュボード', id: 'evaluation', icon: LayoutDashboard, group: 'システム' },
@@ -45,7 +45,11 @@ export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProp
           >
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentScreen('home')}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            title="ホームへ戻る"
+          >
             <svg width="32" height="32" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect width="44" height="44" rx="12" fill="#006239"/>
               <rect x="8" y="12" width="28" height="22" rx="3" fill="white" fillOpacity="0.15" stroke="white" strokeWidth="2"/>
@@ -55,7 +59,7 @@ export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProp
               <polyline points="15,26 19,30 29,21" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
             </svg>
             <span className="text-xl font-black tracking-tight" style={{ color: '#006239' }}>tasuke</span>
-          </div>
+          </button>
         </div>
         
         <div className="flex items-center gap-4">

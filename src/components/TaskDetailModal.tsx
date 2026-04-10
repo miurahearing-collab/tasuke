@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { X, Send, Save, MessageSquare, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Send, Save, MessageSquare, Trash2, AlertTriangle, CalendarPlus, Check } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
 
 export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: () => void }) => {
-  const { tasks, memos, users, currentUser, updateTaskDescription, updateTask, addMemo, deleteMemo, markTaskAsRead, deleteTask, toggleTaskCompletion } = useAppContext();
+  const { tasks, memos, users, currentUser, updateTaskDescription, updateTask, addMemo, deleteMemo, markTaskAsRead, deleteTask, toggleTaskCompletion, personalSchedules, addPersonalSchedule } = useAppContext();
   const task = tasks.find(t => t.id === taskId);
   
   const [description, setDescription] = useState(task?.description || '');
@@ -18,6 +18,10 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
   const [endDate, setEndDate] = useState(task?.endDate || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [memoToDelete, setMemoToDelete] = useState<string | null>(null);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [schedDate, setSchedDate] = useState(task?.startDate || '');
+  const [schedStart, setSchedStart] = useState('10:00');
+  const [schedEnd, setSchedEnd] = useState('11:00');
 
   useEffect(() => {
     if (task) {
@@ -26,6 +30,29 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
   }, [task?.id]);
 
   if (!task) return null;
+
+  // スケジュール登録済みチェック（自分が作成者または参加者として）
+  const isScheduled = personalSchedules.some(s =>
+    s.taskId === taskId && !s.isArchived &&
+    (s.createdBy === currentUser?.id || s.participantIds.includes(currentUser?.id || ''))
+  );
+
+  const handleRegisterSchedule = async () => {
+    if (!currentUser || !schedDate) return;
+    const startDT = new Date(`${schedDate}T${schedStart}:00`);
+    const endDT = new Date(`${schedDate}T${schedEnd}:00`);
+    if (endDT <= startDT) return;
+    const taskAssigneeIds = task.assigneeIds || (task.assigneeId ? [task.assigneeId] : [currentUser.id]);
+    const participants = [...new Set([currentUser.id, ...taskAssigneeIds])];
+    await addPersonalSchedule({
+      title: task.title,
+      participantIds: participants,
+      startDateTime: startDT.toISOString(),
+      endDateTime: endDT.toISOString(),
+      taskId: taskId,
+    });
+    setShowScheduleForm(false);
+  };
 
   const taskMemos = memos.filter(m => m.taskId === taskId).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -155,6 +182,22 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* スケジュール登録ボタン */}
+            {isScheduled ? (
+              <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded-md whitespace-nowrap">
+                <Check className="w-3.5 h-3.5" />
+                スケジュール済み
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowScheduleForm(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors whitespace-nowrap"
+                title="スケジュールに登録"
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                スケジュール登録
+              </button>
+            )}
             <button
               onClick={() => toggleTaskCompletion(task.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
@@ -178,6 +221,59 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
           </div>
         </div>
         
+        {/* スケジュール登録フォーム */}
+        {showScheduleForm && !isScheduled && (
+          <div className="mx-6 mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-1.5">
+              <CalendarPlus className="w-4 h-4" />
+              スケジュールに登録
+            </h4>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs text-blue-700 mb-1">日付</label>
+                <input
+                  type="date"
+                  value={schedDate}
+                  onChange={e => setSchedDate(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-blue-700 mb-1">開始</label>
+                <input
+                  type="time"
+                  value={schedStart}
+                  onChange={e => setSchedStart(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-blue-700 mb-1">終了</label>
+                <input
+                  type="time"
+                  value={schedEnd}
+                  onChange={e => setSchedEnd(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-blue-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleRegisterSchedule}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700"
+              >
+                登録する
+              </button>
+              <button
+                onClick={() => setShowScheduleForm(false)}
+                className="px-3 py-1.5 bg-white text-gray-600 border border-gray-300 text-xs rounded-md hover:bg-gray-50"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
+
         {showDeleteConfirm && (
           <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-800 mb-3">このタスクを削除してもよろしいですか？</p>
