@@ -312,22 +312,50 @@ function layoutEvents(events: PersonalSchedule[]) {
   });
 }
 
-// ─── 日付メモ入力欄（独立コンポーネント：キーストロークでの親再レンダリング防止）──
-const DayMemoInput = React.memo(({ dateStr, userId, onSave }: {
-  dateStr: string; userId: string; onSave: (text: string) => void;
+// ─── 日付メモモーダル ──────────────────────────────────────────────────
+const DayMemoModal = React.memo(({ dateStr, userId, onSave, onClose }: {
+  dateStr: string; userId: string; onSave: (text: string) => void; onClose: () => void;
 }) => {
   const [text, setText] = useState(() => getDayMemoLS(userId, dateStr));
+  // 曜日付きの日付表示
+  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  const d = new Date(dateStr + 'T00:00:00');
+  const displayDate = `${d.getMonth() + 1}月${d.getDate()}日（${dayNames[d.getDay()]}）`;
+
   return (
-    <textarea
-      autoFocus
-      value={text}
-      onChange={e => setText(e.target.value)}
-      onBlur={() => onSave(text)}
-      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSave(text); } }}
-      className="w-full text-[10px] border border-blue-300 rounded px-1 py-0.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[36px]"
-      rows={2}
-      placeholder="メモを入力"
-    />
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-amber-50 rounded-t-2xl">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <StickyNote className="w-5 h-5 text-amber-500" />
+            {displayDate} のメモ
+          </h2>
+          <button onClick={onClose} className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <textarea
+            autoFocus
+            value={text}
+            onChange={e => setText(e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-y"
+            placeholder="この日のメモ、予定の詳細、MTG URL、議事録など..."
+          />
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              キャンセル
+            </button>
+            <button type="button" onClick={() => onSave(text)}
+              className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 });
 
@@ -358,7 +386,7 @@ export const TeamMeeting = () => {
   const gridRef = useRef<HTMLDivElement>(null);
 
   // 日付メモ用状態
-  const [editingMemoDate, setEditingMemoDate] = useState<string | null>(null);
+  const [memoModalDate, setMemoModalDate] = useState<string | null>(null); // モーダル表示する日付
   const [memoVersion, setMemoVersion] = useState(0); // メモ保存時に再レンダリング
 
   // 日程調整フォーム
@@ -570,25 +598,34 @@ export const TeamMeeting = () => {
       ghost?.remove();
       ghost = null;
 
+      // カーソル・透過はすぐリセット（UX向上）
       eventElem.style.opacity = '';
       eventElem.style.zIndex = '';
       eventElem.style.cursor = '';
-      eventElem.style.top = '';
-      eventElem.style.height = '';
+      // ※ top/height はまだリセットしない → Firestore更新中の旧位置フラッシュを防止
       dragElemRef.current = null;
 
       const temp = dragCurrentTemp.current;
       dragCurrentTemp.current = null;
 
-      if (temp && (
+      const moved = temp && (
         temp.start.getTime() !== originalStart.getTime() ||
         temp.end.getTime() !== originalEnd.getTime()
-      )) {
+      );
+
+      if (moved && temp) {
+        // Firestore更新が完了するまでDOM位置を維持（旧データでのReact再レンダリングを防ぐ）
         await updatePersonalSchedule(schedule.id, {
           startDateTime: temp.start.toISOString(),
           endDateTime: temp.end.toISOString(),
         });
+        // Firestore onSnapshot がローカルキャッシュを更新済みのため
+        // この時点でsetDragScheduleId(null)するとReactは最新データで再レンダリングする
       }
+
+      // Firestore更新後にDOMスタイルをリセット → Reactが正しい位置で描画
+      eventElem.style.top = '';
+      eventElem.style.height = '';
       setDragScheduleId(null);
     };
 
@@ -597,15 +634,15 @@ export const TeamMeeting = () => {
   };
 
   // ─── 日付メモ操作 ─────────────────────────────────────────────
-  const openMemoEdit = (dateStr: string, e: React.MouseEvent) => {
+  const openMemoModal = (dateStr: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditingMemoDate(dateStr);
+    setMemoModalDate(dateStr);
   };
 
   const saveMemo = (dateStr: string, text: string) => {
     setDayMemoLS(currentUser.id, dateStr, text);
     setMemoVersion(v => v + 1);
-    setEditingMemoDate(null);
+    setMemoModalDate(null);
   };
 
   // ─── 週ビュー ─────────────────────────────────────────────────
@@ -642,7 +679,6 @@ export const TeamMeeting = () => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const memoText = dayMemoMap[dateStr] ?? '';
             const hasMemo = !!memoText;
-            const isEditing = editingMemoDate === dateStr;
             return (
               <div
                 key={i}
@@ -662,33 +698,25 @@ export const TeamMeeting = () => {
                 )}>
                   {format(day, 'd')}
                 </div>
-                {/* 日付メモ */}
+                {/* 日付メモ：クリックでモーダルを開く */}
                 <div className="px-1 py-0.5 min-h-[22px]">
-                  {isEditing ? (
-                    <DayMemoInput
-                      dateStr={dateStr}
-                      userId={currentUser.id}
-                      onSave={(text) => saveMemo(dateStr, text)}
-                    />
-                  ) : (
-                    <div
-                      className={cn(
-                        'text-[10px] text-left cursor-pointer rounded px-0.5 py-0.5 leading-tight hover:bg-gray-100 transition-colors',
-                        hasMemo ? 'text-amber-700' : 'text-gray-400 hover:text-gray-500'
-                      )}
-                      onClick={e => openMemoEdit(dateStr, e)}
-                      title="日付のメモを編集"
-                    >
-                      {hasMemo ? (
-                        <span className="flex items-start gap-0.5">
-                          <StickyNote className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                          <span className="truncate">{memoText}</span>
-                        </span>
-                      ) : (
-                        <span className="opacity-50">＋</span>
-                      )}
-                    </div>
-                  )}
+                  <div
+                    className={cn(
+                      'text-[10px] text-left cursor-pointer rounded px-0.5 py-0.5 leading-tight hover:bg-amber-50 transition-colors',
+                      hasMemo ? 'text-amber-700' : 'text-gray-400 hover:text-gray-500'
+                    )}
+                    onClick={e => openMemoModal(dateStr, e)}
+                    title={hasMemo ? 'メモを編集' : 'メモを追加'}
+                  >
+                    {hasMemo ? (
+                      <span className="flex items-center gap-0.5">
+                        <StickyNote className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">メモあり</span>
+                      </span>
+                    ) : (
+                      <span className="opacity-40">📝</span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -1245,6 +1273,14 @@ export const TeamMeeting = () => {
       )}
       {openTaskId && (
         <TaskDetailModal taskId={openTaskId} onClose={() => setOpenTaskId(null)} />
+      )}
+      {memoModalDate && (
+        <DayMemoModal
+          dateStr={memoModalDate}
+          userId={currentUser.id}
+          onSave={(text) => saveMemo(memoModalDate, text)}
+          onClose={() => setMemoModalDate(null)}
+        />
       )}
     </div>
   );
