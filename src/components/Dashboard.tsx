@@ -6,7 +6,7 @@ import { GanttChart } from './GanttChart';
 import { InitiativeModal } from './InitiativeModal';
 import { TaskModal } from './TaskModal';
 import { TaskDetailModal } from './TaskDetailModal';
-import { cn } from '../lib/utils';
+import { cn, renderTextWithLinks } from '../lib/utils';
 
 export const Dashboard = () => {
   const { currentUser, categories, initiatives, tasks, users, updateInitiative, archiveInitiative, deleteInitiative, personalSchedules } = useAppContext();
@@ -286,7 +286,7 @@ export const Dashboard = () => {
                 className="min-h-[36px] cursor-pointer rounded-md hover:bg-gray-50 transition-colors"
               >
                 {init.description ? (
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{init.description}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{renderTextWithLinks(init.description)}</p>
                 ) : (
                   <p className="text-sm text-gray-400 italic">クリックしてメモや詳細を追加できます</p>
                 )}

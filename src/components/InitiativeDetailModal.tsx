@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAppContext } from '../store/AppContext';
 import { X, Check, Plus, Calendar as CalendarIcon, MessageSquare, Archive as ArchiveIcon, User, Save, Pencil, Trash2, ArrowUpDown, SortAsc } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { cn } from '../lib/utils';
+import { cn, renderTextWithLinks } from '../lib/utils';
 import { TaskModal } from './TaskModal';
 import { TaskDetailModal } from './TaskDetailModal';
 
@@ -300,7 +300,7 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
                   className="min-h-[48px] cursor-pointer rounded-md p-2 -m-2 hover:bg-gray-50 transition-colors"
                 >
                   {initiative.description ? (
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{initiative.description}</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{renderTextWithLinks(initiative.description)}</p>
                   ) : (
                     <p className="text-sm text-gray-400 italic">クリックしてメモや詳細を追加できます</p>
                   )}
