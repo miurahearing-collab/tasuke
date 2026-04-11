@@ -248,9 +248,9 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h3 className="text-lg font-semibold text-gray-900">タスク一覧</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Sort toggle */}
               <button
                 onClick={() => setTaskSortOrder(prev => prev === 'deadline' ? 'start' : 'deadline')}
@@ -258,7 +258,7 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
                 title="ソート切替"
               >
                 <ArrowUpDown className="w-3.5 h-3.5" />
-                {taskSortOrder === 'deadline' ? '期限順' : '開始順'}
+                <span className="hidden sm:inline">{taskSortOrder === 'deadline' ? '期限順' : '開始順'}</span>
               </button>
               {/* Show/hide completed */}
               <button
@@ -271,7 +271,7 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
                 )}
               >
                 <SortAsc className="w-3.5 h-3.5" />
-                {showCompleted ? '完了含む' : '未完了のみ'}
+                <span className="hidden sm:inline">{showCompleted ? '完了含む' : '未完了のみ'}</span>
               </button>
               <button
                 onClick={() => setIsAddingTask(true)}

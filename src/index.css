@@ -45,8 +45,9 @@ body {
 
 /* iOSでinput/select/textareaタップ時の自動ズームを防止 */
 /* font-sizeが16px未満だとiOS Safariが自動ズームするため、最低16pxを保証する */
+/* Tailwindのtext-sm等のクラスより確実に優先させるため!importantを使用 */
 input,
 select,
 textarea {
-  font-size: max(16px, 1em);
+  font-size: max(16px, 1em) !important;
 }
