@@ -284,16 +284,6 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
             </div>
           </div>
 
-          {/* スマホ用: タスク追加 固定フローティングボタン */}
-          <button
-            onClick={() => setIsAddingTask(true)}
-            className="sm:hidden fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3.5 bg-blue-600 text-white text-sm font-bold rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
-            style={{ boxShadow: '0 4px 20px rgba(0,98,57,0.35)' }}
-          >
-            <Plus className="w-5 h-5" />
-            タスク追加
-          </button>
-
           <div className="space-y-3">
             {initTasks.map(task => {
               const taskMemos = memos.filter(m => m.taskId === task.id);
@@ -390,6 +380,17 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
               </div>
             )}
           </div>
+        </div>
+
+        {/* スマホ用タスク追加ボタン：スクロールエリア外・モーダル最下部に固定表示 */}
+        <div className="sm:hidden border-t border-gray-200 bg-white p-4 shrink-0">
+          <button
+            onClick={() => setIsAddingTask(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white text-base font-bold rounded-xl active:scale-95 transition-all"
+          >
+            <Plus className="w-5 h-5" />
+            タスク追加
+          </button>
         </div>
       </div>
 
