@@ -42,3 +42,11 @@ body {
   background-color: var(--color-gray-50);
   color: var(--color-gray-900);
 }
+
+/* iOSでinput/select/textareaタップ時の自動ズームを防止 */
+/* font-sizeが16px未満だとiOS Safariが自動ズームするため、最低16pxを保証する */
+input,
+select,
+textarea {
+  font-size: max(16px, 1em);
+}
