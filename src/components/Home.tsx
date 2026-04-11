@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { LayoutDashboard, Calendar, Clock, CheckSquare, AlertCircle, AlertTriangle, MessageSquare, ArrowUpDown, SortAsc } from 'lucide-react';
+import { LayoutDashboard, Calendar, Clock, CheckSquare, AlertCircle, AlertTriangle, MessageSquare, ArrowUpDown, SortAsc, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { differenceInDays, parseISO, startOfDay, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { TaskDetailModal } from './TaskDetailModal';
+import { VoteStatus } from '../types';
 
 interface HomeProps {
   setCurrentScreen: (screen: 'dashboard' | 'archive' | 'settings' | 'meeting' | 'reservation' | 'home' | 'evaluation') => void;
@@ -21,10 +22,11 @@ const parseOptionStr = (option: string) => {
 };
 
 export const Home = ({ setCurrentScreen }: HomeProps) => {
-  const { currentUser, initiatives, tasks, memos, meetingPolls, categories } = useAppContext();
+  const { currentUser, initiatives, tasks, memos, meetingPolls, categories, voteMeetingPoll } = useAppContext();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskSortOrder, setTaskSortOrder] = useState<'deadline' | 'start'>('deadline');
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
+  const [votingPollId, setVotingPollId] = useState<string | null>(null);
 
   if (!currentUser) return null;
 
@@ -158,7 +160,7 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
                 {unansweredPolls.map(poll => (
                   <button
                     key={poll.id}
-                    onClick={() => setCurrentScreen('meeting')}
+                    onClick={() => setVotingPollId(poll.id)}
                     className="w-full text-left bg-amber-50/50 p-4 rounded-xl border border-amber-200 hover:bg-amber-50 transition-colors flex items-center justify-between group"
                   >
                     <div>
@@ -428,6 +430,84 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
           onClose={() => setSelectedTaskId(null)}
         />
       )}
+
+      {/* 日程調整 投票モーダル */}
+      {votingPollId && (() => {
+        const poll = meetingPolls.find(p => p.id === votingPollId);
+        if (!poll) return null;
+        const myVotes = poll.votes[currentUser.id] || {};
+        const voteOptions: { value: VoteStatus; label: string; active: string; inactive: string }[] = [
+          { value: 'ok',   label: '○', active: 'bg-green-500 text-white border-green-500',  inactive: 'bg-white border-gray-300 text-gray-400 hover:border-green-400' },
+          { value: 'fair', label: '△', active: 'bg-yellow-400 text-white border-yellow-400', inactive: 'bg-white border-gray-300 text-gray-400 hover:border-yellow-400' },
+          { value: 'ng',   label: '×', active: 'bg-red-400 text-white border-red-400',       inactive: 'bg-white border-gray-300 text-gray-400 hover:border-red-400' },
+        ];
+        const answeredCount = Object.keys(myVotes).length;
+        const totalCount = poll.options.length;
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setVotingPollId(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* ヘッダー */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-amber-50 rounded-t-2xl shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">{poll.title}</h2>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    {answeredCount}/{totalCount} 件回答済み
+                  </p>
+                </div>
+                <button onClick={() => setVotingPollId(null)} className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 候補一覧 */}
+              <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+                {poll.options.map(opt => {
+                  const parsed = parseOptionStr(opt);
+                  const currentVote = myVotes[opt] || 'none';
+                  return (
+                    <div key={opt} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
+                      <div className="min-w-0">
+                        {parsed ? (
+                          <>
+                            <div className="text-sm font-medium text-gray-800">{parsed.dateStr}</div>
+                            <div className="text-xs text-gray-500">{parsed.startTime}〜{parsed.endTime}</div>
+                          </>
+                        ) : (
+                          <div className="text-sm text-gray-700">{opt}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {voteOptions.map(v => (
+                          <button
+                            key={v.value}
+                            onClick={() => voteMeetingPoll(poll.id, opt, v.value)}
+                            className={cn(
+                              'w-8 h-8 rounded-full text-sm font-bold border-2 transition-colors',
+                              currentVote === v.value ? v.active : v.inactive
+                            )}
+                          >
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* フッター */}
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl shrink-0 flex justify-end">
+                <button
+                  onClick={() => setVotingPollId(null)}
+                  className="px-5 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
+                >
+                  完了
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

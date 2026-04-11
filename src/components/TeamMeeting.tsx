@@ -58,7 +58,8 @@ const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 // ─── スケジュールカラー定義 ──────────────────────────────────────────
 export const SCHEDULE_COLORS: { id: string; bg: string; text: string; border?: string; label: string }[] = [
-  { id: 'blue',   bg: '#3b82f6', text: '#ffffff', label: '青（デフォルト）' },
+  { id: 'green',  bg: '#22c55e', text: '#ffffff', label: '緑（デフォルト）' },
+  { id: 'blue',   bg: '#3b82f6', text: '#ffffff', label: '青' },
   { id: 'red',    bg: '#ef4444', text: '#ffffff', label: '赤' },
   { id: 'yellow', bg: '#eab308', text: '#1f2937', label: '黄' },
   { id: 'pink',   bg: '#ec4899', text: '#ffffff', label: 'ピンク' },
@@ -140,7 +141,7 @@ const ScheduleModal = ({
 
   const [title, setTitle] = useState(s?.title || '');
   const [memo, setMemo] = useState(s?.memo || '');
-  const [color, setColor] = useState(s?.color || 'blue');
+  const [color, setColor] = useState(s?.color || 'green');
   const [date, setDate] = useState(defDate);
   const [startTime, setStartTime] = useState(defSH);
   const [endTime, setEndTime] = useState(defEH);
