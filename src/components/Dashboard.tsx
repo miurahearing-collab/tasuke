@@ -25,6 +25,8 @@ export const Dashboard = () => {
   const [taskFilter, setTaskFilter] = useState<'incomplete' | 'all'>('incomplete');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isAddingTask, setIsAddingTask] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [mainView, setMainView] = useState<'initiatives' | 'unscheduled'>('initiatives');
 
   // スケジュール未登録タスク（自分担当・未完了・スケジュール未連携）
@@ -90,6 +92,11 @@ export const Dashboard = () => {
         setIsEditingInitiative(false);
       }
     }
+  };
+
+  const handleSaveDescription = (init: typeof initiatives[0]) => {
+    updateInitiative(init.id, init.title, init.categoryId, init.assigneeIds, editDescription);
+    setIsEditingDescription(false);
   };
 
   const handleArchive = () => {
@@ -220,6 +227,63 @@ export const Dashboard = () => {
               </div>
             )}
           </div>
+          {/* メモ・詳細 */}
+          <div className="mt-4 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+              <h3 className="text-sm font-medium text-gray-600 flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                メモ・詳細
+              </h3>
+              {!isEditingDescription && (
+                <button
+                  onClick={() => { setEditDescription(init.description || ''); setIsEditingDescription(true); }}
+                  className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                >
+                  編集
+                </button>
+              )}
+            </div>
+            <div className="p-4">
+              {isEditingDescription ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={4}
+                    autoFocus
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                    placeholder="施策の詳細、背景、参考URLなどを記載できます"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setIsEditingDescription(false)}
+                      className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={() => handleSaveDescription(init)}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => { setEditDescription(init.description || ''); setIsEditingDescription(true); }}
+                  className="min-h-[40px] cursor-pointer rounded-md p-2 -m-2 hover:bg-gray-50 transition-colors"
+                >
+                  {init.description ? (
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{init.description}</p>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">クリックしてメモや詳細を追加できます</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* タスク追加ボタン（全デバイスで表示） */}
           <button
             onClick={() => setIsAddingTask(true)}
