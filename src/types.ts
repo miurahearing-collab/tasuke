@@ -18,6 +18,7 @@ export interface Initiative {
   id: string;
   title: string;
   categoryId: string;
+  description?: string; // メモ・詳細
   assigneeIds?: string[];
   assigneeId?: string; // deprecated
   isArchived: boolean;

@@ -86,7 +86,7 @@ export const Dashboard = () => {
     if (selectedInitiativeId && editTitle.trim()) {
       const init = initiatives.find(i => i.id === selectedInitiativeId);
       if (init) {
-        updateInitiative(selectedInitiativeId, editTitle.trim(), editCategoryId, init.assigneeIds);
+        updateInitiative(selectedInitiativeId, editTitle.trim(), editCategoryId, init.assigneeIds, init.description);
         setIsEditingInitiative(false);
       }
     }

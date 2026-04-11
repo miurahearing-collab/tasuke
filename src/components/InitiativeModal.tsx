@@ -6,6 +6,7 @@ export const InitiativeModal = ({ onClose }: { onClose: () => void }) => {
   const { currentUser, categories, users, addInitiative } = useAppContext();
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [description, setDescription] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [categoryError, setCategoryError] = useState(false);
 
@@ -19,7 +20,7 @@ export const InitiativeModal = ({ onClose }: { onClose: () => void }) => {
       return;
     }
     if (title.trim() && categoryId) {
-      addInitiative(title.trim(), categoryId, assigneeIds);
+      addInitiative(title.trim(), categoryId, assigneeIds, description);
       onClose();
     }
   };
@@ -79,6 +80,17 @@ export const InitiativeModal = ({ onClose }: { onClose: () => void }) => {
                 カテゴリーを選択してください。カテゴリーが未設定の場合、施策一覧に表示されません。
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">メモ・詳細</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              placeholder="施策の詳細、背景、参考URLなどを記載できます"
+            />
           </div>
 
           <div>

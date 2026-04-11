@@ -112,8 +112,8 @@ interface AppContextType {
   addCategory: (name: string, isAdminOnly: boolean) => Promise<void>;
   updateCategory: (id: string, name: string, isAdminOnly: boolean) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
-  addInitiative: (title: string, categoryId: string, assigneeIds?: string[]) => Promise<void>;
-  updateInitiative: (id: string, title: string, categoryId: string, assigneeIds?: string[]) => Promise<void>;
+  addInitiative: (title: string, categoryId: string, assigneeIds?: string[], description?: string) => Promise<void>;
+  updateInitiative: (id: string, title: string, categoryId: string, assigneeIds?: string[], description?: string) => Promise<void>;
   archiveInitiative: (id: string) => Promise<void>;
   unarchiveInitiative: (id: string) => Promise<void>;
   deleteInitiative: (id: string) => Promise<void>;
@@ -336,23 +336,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await deleteDoc(doc(db, 'categories', id));
   };
 
-  const addInitiative = async (title: string, categoryId: string, assigneeIds: string[] = []) => {
+  const addInitiative = async (title: string, categoryId: string, assigneeIds: string[] = [], description: string = '') => {
     const newRef = doc(collection(db, 'initiatives'));
     await setDoc(newRef, {
       title,
       categoryId,
       assigneeIds,
+      description,
       isArchived: false,
       createdAt: new Date().toISOString(),
       createdBy: currentUser?.id || null,
     });
   };
 
-  const updateInitiative = async (id: string, title: string, categoryId: string, assigneeIds: string[] = []) => {
+  const updateInitiative = async (id: string, title: string, categoryId: string, assigneeIds: string[] = [], description: string = '') => {
     await updateDoc(doc(db, 'initiatives', id), {
       title,
       categoryId,
       assigneeIds,
+      description,
       updatedBy: currentUser?.id || null,
       updatedAt: new Date().toISOString(),
     });
