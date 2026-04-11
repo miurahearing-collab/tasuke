@@ -229,9 +229,18 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
               </>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 shrink-0">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsAddingTask(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 active:scale-95 transition-all whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" />
+              タスク追加
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50 relative">
@@ -272,14 +281,6 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
               >
                 <SortAsc className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{showCompleted ? '完了含む' : '未完了のみ'}</span>
-              </button>
-              {/* PC: タスク追加ボタン */}
-              <button
-                onClick={() => setIsAddingTask(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                タスク追加
               </button>
             </div>
           </div>
@@ -382,16 +383,6 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
           </div>
         </div>
 
-        {/* スマホ用タスク追加ボタン：スクロールエリア外・モーダル最下部に固定表示 */}
-        <div className="sm:hidden border-t border-gray-200 bg-white p-4 shrink-0">
-          <button
-            onClick={() => setIsAddingTask(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white text-base font-bold rounded-xl active:scale-95 transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            タスク追加
-          </button>
-        </div>
       </div>
 
       {isAddingTask && (
