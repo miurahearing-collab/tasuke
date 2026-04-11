@@ -380,7 +380,7 @@ export const Home = ({ setCurrentScreen }: HomeProps) => {
               関わっている施策
               <span className="bg-green-100 text-green-700 text-xs py-0.5 px-2 rounded-full">{myInitiatives.length}件</span>
             </h3>
-            <div className="space-y-3">
+            <div className={`space-y-3 ${myInitiatives.length > 3 ? 'max-h-[420px] overflow-y-auto pr-1' : ''}`}>
               {myInitiatives.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center text-gray-500 text-sm">
                   現在関わっている施策はありません。
