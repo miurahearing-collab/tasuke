@@ -4,6 +4,7 @@ import { Plus, ArrowLeft, CheckSquare, User, Trash2, Filter, CalendarPlus } from
 
 import { GanttChart } from './GanttChart';
 import { InitiativeModal } from './InitiativeModal';
+import { TaskModal } from './TaskModal';
 import { TaskDetailModal } from './TaskDetailModal';
 import { cn } from '../lib/utils';
 
@@ -23,6 +24,7 @@ export const Dashboard = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [taskFilter, setTaskFilter] = useState<'incomplete' | 'all'>('incomplete');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isAddingTask, setIsAddingTask] = useState(false);
   const [mainView, setMainView] = useState<'initiatives' | 'unscheduled'>('initiatives');
 
   // スケジュール未登録タスク（自分担当・未完了・スケジュール未連携）
@@ -116,13 +118,13 @@ export const Dashboard = () => {
       <>
       <div className="flex flex-col h-full space-y-6">
         <div className="flex items-start gap-4">
-          <button 
+          <button
             onClick={() => setView('list')}
-            className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors mt-1"
+            className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors mt-1 shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             {isEditingInitiative ? (
               <div className="flex flex-col gap-3 mb-2 max-w-2xl">
                 <input
@@ -218,6 +220,14 @@ export const Dashboard = () => {
               </div>
             )}
           </div>
+          {/* タスク追加ボタン（全デバイスで表示） */}
+          <button
+            onClick={() => setIsAddingTask(true)}
+            className="flex items-center gap-1.5 px-4 py-2 mt-3 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 active:scale-95 transition-all w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            タスク追加
+          </button>
         </div>
         <div className="flex-1 min-h-[500px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           {/* Filter controls inside the Gantt panel header */}
@@ -255,6 +265,9 @@ export const Dashboard = () => {
         </div>
       </div>
 
+      {isAddingTask && selectedInitiativeId && (
+        <TaskModal initiativeId={selectedInitiativeId} onClose={() => setIsAddingTask(false)} />
+      )}
       {selectedTaskId && (
         <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
       )}
