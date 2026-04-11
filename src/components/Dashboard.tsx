@@ -227,71 +227,72 @@ export const Dashboard = () => {
               </div>
             )}
           </div>
-          {/* メモ・詳細 */}
-          <div className="mt-4 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
-              <h3 className="text-sm font-medium text-gray-600 flex items-center gap-1.5">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                メモ・詳細
-              </h3>
-              {!isEditingDescription && (
+        </div>
+
+        {/* メモ・詳細（タイトルの下・全幅） */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+            <h3 className="text-sm font-medium text-gray-600 flex items-center gap-1.5">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              メモ・詳細
+            </h3>
+            <div className="flex items-center gap-2">
+              {!isEditingDescription ? (
                 <button
                   onClick={() => { setEditDescription(init.description || ''); setIsEditingDescription(true); }}
                   className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
                 >
                   編集
                 </button>
-              )}
-            </div>
-            <div className="p-4">
-              {isEditingDescription ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    rows={4}
-                    autoFocus
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                    placeholder="施策の詳細、背景、参考URLなどを記載できます"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setIsEditingDescription(false)}
-                      className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                    >
-                      キャンセル
-                    </button>
-                    <button
-                      onClick={() => handleSaveDescription(init)}
-                      className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
               ) : (
-                <div
-                  onClick={() => { setEditDescription(init.description || ''); setIsEditingDescription(true); }}
-                  className="min-h-[40px] cursor-pointer rounded-md p-2 -m-2 hover:bg-gray-50 transition-colors"
-                >
-                  {init.description ? (
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{init.description}</p>
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">クリックしてメモや詳細を追加できます</p>
-                  )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsEditingDescription(false)}
+                    className="px-3 py-1 text-xs text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={() => handleSaveDescription(init)}
+                    className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                  >
+                    保存
+                  </button>
                 </div>
               )}
+              {/* タスク追加ボタン */}
+              <button
+                onClick={() => setIsAddingTask(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 active:scale-95 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                タスク追加
+              </button>
             </div>
           </div>
-
-          {/* タスク追加ボタン（全デバイスで表示） */}
-          <button
-            onClick={() => setIsAddingTask(true)}
-            className="flex items-center gap-1.5 px-4 py-2 mt-3 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 active:scale-95 transition-all w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4" />
-            タスク追加
-          </button>
+          <div className="px-4 py-3">
+            {isEditingDescription ? (
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={3}
+                autoFocus
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                placeholder="施策の詳細、背景、参考URLなどを記載できます"
+              />
+            ) : (
+              <div
+                onClick={() => { setEditDescription(init.description || ''); setIsEditingDescription(true); }}
+                className="min-h-[36px] cursor-pointer rounded-md hover:bg-gray-50 transition-colors"
+              >
+                {init.description ? (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{init.description}</p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">クリックしてメモや詳細を追加できます</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-h-[500px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           {/* Filter controls inside the Gantt panel header */}
