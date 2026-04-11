@@ -266,6 +266,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const resetKey = `${task.id}:${period.startDate}`;
         if (resetTaskIdsRef.current.has(resetKey)) continue;
         tasksNeedingReset.push({ task, period });
+        // Setが大きくなりすぎたら古いエントリを破棄（長期稼働時のメモリ肥大防止）
+        if (resetTaskIdsRef.current.size > 500) resetTaskIdsRef.current.clear();
         resetTaskIdsRef.current.add(resetKey);
       }
 
@@ -277,8 +279,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               startDate: period.startDate,
               endDate: period.endDate,
               isCompleted: false,
-              completedBy: null,
-              completedAt: null,
+              completedBy: deleteField(),
+              completedAt: deleteField(),
             });
           }
           await batch.commit();
@@ -366,8 +368,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const unarchiveInitiative = async (id: string) => {
     await updateDoc(doc(db, 'initiatives', id), {
       isArchived: false,
-      completedBy: null,
-      completedAt: null,
+      completedBy: deleteField(),
+      completedAt: deleteField(),
     });
   };
 
@@ -475,8 +477,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const batch = writeBatch(db);
       batch.update(doc(db, 'tasks', id), {
         isCompleted,
-        completedBy: isCompleted ? (currentUser?.id || null) : null,
-        completedAt: isCompleted ? new Date().toISOString() : null,
+        completedBy: isCompleted ? (currentUser?.id || null) : deleteField(),
+        completedAt: isCompleted ? new Date().toISOString() : deleteField(),
         updatedBy: currentUser?.id || null,
         updatedAt: new Date().toISOString(),
       });

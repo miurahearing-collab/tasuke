@@ -67,7 +67,8 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
     if (task) {
       markTaskAsRead(task.id);
     }
-  }, [task?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, markTaskAsRead]);
 
   if (!task) return null;
 
