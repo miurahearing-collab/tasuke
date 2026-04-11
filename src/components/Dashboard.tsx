@@ -293,11 +293,11 @@ export const Dashboard = () => {
               )}
             </button>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <select
               value={selectedCategoryId}
               onChange={(e) => setSelectedCategoryId(e.target.value)}
-              className="flex-1 sm:flex-none border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-auto border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">すべてのカテゴリー</option>
               {categories
@@ -310,7 +310,7 @@ export const Dashboard = () => {
             <select
               value={selectedAssigneeId}
               onChange={(e) => setSelectedAssigneeId(e.target.value)}
-              className="flex-1 sm:flex-none border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-auto border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">すべての担当者</option>
               {users.map(u => (

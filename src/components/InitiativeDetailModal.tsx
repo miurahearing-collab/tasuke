@@ -234,7 +234,7 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50 relative">
           <div className="mb-6 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-700">進捗状況</h3>
@@ -250,7 +250,7 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
 
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h3 className="text-lg font-semibold text-gray-900">タスク一覧</h3>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
               {/* Sort toggle */}
               <button
                 onClick={() => setTaskSortOrder(prev => prev === 'deadline' ? 'start' : 'deadline')}
@@ -273,15 +273,26 @@ export const InitiativeDetailModal = ({ initiativeId, onClose }: { initiativeId:
                 <SortAsc className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{showCompleted ? '完了含む' : '未完了のみ'}</span>
               </button>
+              {/* PC: タスク追加ボタン */}
               <button
                 onClick={() => setIsAddingTask(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 タスク追加
               </button>
             </div>
           </div>
+
+          {/* スマホ用: タスク追加 固定フローティングボタン */}
+          <button
+            onClick={() => setIsAddingTask(true)}
+            className="sm:hidden fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3.5 bg-blue-600 text-white text-sm font-bold rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
+            style={{ boxShadow: '0 4px 20px rgba(0,98,57,0.35)' }}
+          >
+            <Plus className="w-5 h-5" />
+            タスク追加
+          </button>
 
           <div className="space-y-3">
             {initTasks.map(task => {
