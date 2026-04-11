@@ -138,10 +138,11 @@ interface AppContextType {
   deleteMeetingPoll: (pollId: string) => Promise<void>;
   confirmMeetingPoll: (pollId: string, option: string) => Promise<void>;
   cancelConfirmMeetingPoll: (pollId: string) => Promise<void>;
+  updateMeetingPollMemo: (pollId: string, memo: string) => Promise<void>;
   personalSchedules: PersonalSchedule[];
   archivedSchedules: PersonalSchedule[];
-  addPersonalSchedule: (data: { title: string; memo?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => Promise<void>;
-  updatePersonalSchedule: (id: string, data: { title?: string; memo?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => Promise<void>;
+  addPersonalSchedule: (data: { title: string; memo?: string; color?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => Promise<void>;
+  updatePersonalSchedule: (id: string, data: { title?: string; memo?: string; color?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => Promise<void>;
   archivePersonalSchedule: (id: string) => Promise<void>;
   permanentDeletePersonalSchedule: (id: string) => Promise<void>;
   bulkPermanentDeletePersonalSchedules: (ids: string[]) => Promise<void>;
@@ -632,7 +633,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const addPersonalSchedule = async (data: { title: string; memo?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
+  const addPersonalSchedule = async (data: { title: string; memo?: string; color?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
     if (!currentUser) return;
     const newRef = doc(collection(db, 'personalSchedules'));
     const scheduleData: any = {
@@ -644,14 +645,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       endDateTime: data.endDateTime,
     };
     if (data.memo !== undefined) scheduleData.memo = data.memo;
+    if (data.color) scheduleData.color = data.color;
     if (data.taskId) scheduleData.taskId = data.taskId;
     await setDoc(newRef, scheduleData);
   };
 
-  const updatePersonalSchedule = async (id: string, data: { title?: string; memo?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => {
+  const updatePersonalSchedule = async (id: string, data: { title?: string; memo?: string; color?: string; participantIds?: string[]; startDateTime?: string; endDateTime?: string }) => {
     const updateData: any = { ...data, updatedAt: new Date().toISOString() };
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
     await updateDoc(doc(db, 'personalSchedules', id), updateData);
+  };
+
+  const updateMeetingPollMemo = async (pollId: string, memo: string) => {
+    await updateDoc(doc(db, 'meetingPolls', pollId), { memo });
   };
 
   const archivePersonalSchedule = async (id: string) => {
@@ -689,7 +695,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       deleteTask, restoreTask, permanentDeleteTask,
       addMemo, deleteMemo, markTaskAsRead,
       addMeetingPoll, voteMeetingPoll, updateMeetingPoll, moveToTrashMeetingPoll, restoreMeetingPoll, deleteMeetingPoll,
-      confirmMeetingPoll, cancelConfirmMeetingPoll,
+      confirmMeetingPoll, cancelConfirmMeetingPoll, updateMeetingPollMemo,
       personalSchedules, archivedSchedules,
       addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule, permanentDeletePersonalSchedule, bulkPermanentDeletePersonalSchedules,
       updateUser, logout

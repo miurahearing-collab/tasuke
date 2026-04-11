@@ -77,6 +77,7 @@ export interface PersonalSchedule {
   id: string;
   title: string;
   memo?: string; // メモ、オンラインMTG URL 等
+  color?: string; // カスタムカラー（タスク連携・確定日程は色固定のため使用しない）
   createdBy: string;
   createdAt: string;
   participantIds: string[]; // 作成者を含む
@@ -93,6 +94,7 @@ export interface MeetingPoll {
   id: string;
   title: string;
   description?: string;
+  memo?: string; // 確定後のメモ（スケジューラー上で編集可能）
   createdBy: string;
   createdAt: string;
   targetUserIds: string[];

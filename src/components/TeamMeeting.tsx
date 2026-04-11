@@ -56,6 +56,21 @@ const setDayMemoLS = (userId: string, dateStr: string, text: string) => {
 const HOURS_LIST = Array.from({ length: TOTAL_HOURS }, (_, i) => START_HOUR + i);
 const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+// ─── スケジュールカラー定義 ──────────────────────────────────────────
+export const SCHEDULE_COLORS: { id: string; bg: string; text: string; border?: string; label: string }[] = [
+  { id: 'blue',   bg: '#3b82f6', text: '#ffffff', label: '青（デフォルト）' },
+  { id: 'red',    bg: '#ef4444', text: '#ffffff', label: '赤' },
+  { id: 'yellow', bg: '#eab308', text: '#1f2937', label: '黄' },
+  { id: 'pink',   bg: '#ec4899', text: '#ffffff', label: 'ピンク' },
+  { id: 'white',  bg: '#ffffff', text: '#374151', border: '#d1d5db', label: '白' },
+  { id: 'gray',   bg: '#6b7280', text: '#ffffff', label: 'グレー' },
+  { id: 'orange', bg: '#f97316', text: '#ffffff', label: 'オレンジ' },
+  { id: 'black',  bg: '#1f2937', text: '#ffffff', label: '黒' },
+];
+
+const getScheduleColor = (colorId?: string) =>
+  SCHEDULE_COLORS.find(c => c.id === colorId) ?? SCHEDULE_COLORS[0];
+
 // ─── カスタム時間セレクト（30分刻み保証） ────────────────────────────
 const TimeSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
   const parts = value.split(':');
@@ -101,7 +116,7 @@ const ScheduleModal = ({
 }: {
   state: ScheduleModalState;
   onClose: () => void;
-  onSave: (data: { title: string; memo: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => void;
+  onSave: (data: { title: string; memo: string; color?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => void;
   onDelete?: () => void;
   onOpenTask?: (taskId: string) => void;
   tasks: any[];
@@ -125,12 +140,23 @@ const ScheduleModal = ({
 
   const [title, setTitle] = useState(s?.title || '');
   const [memo, setMemo] = useState(s?.memo || '');
+  const [color, setColor] = useState(s?.color || 'blue');
   const [date, setDate] = useState(defDate);
   const [startTime, setStartTime] = useState(defSH);
   const [endTime, setEndTime] = useState(defEH);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>(s?.participantIds || [currentUserId]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(s?.taskId);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const fromMin = (min: number) => { const mm = Math.min(Math.max(min, 0), 23 * 60 + 30); return `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`; };
+
+  // 開始時間変更時：終了時間を元の時間差を維持して自動連動
+  const handleStartTimeChange = (newStart: string) => {
+    const duration = toMin(endTime) - toMin(startTime);
+    setStartTime(newStart);
+    setEndTime(fromMin(toMin(newStart) + (duration > 0 ? duration : 60)));
+  };
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
   const taskAssigneeIds = selectedTask?.assigneeIds || (selectedTask?.assigneeId ? [selectedTask.assigneeId] : []);
@@ -159,7 +185,8 @@ const ScheduleModal = ({
     const endDT = new Date(`${date}T${endTime}:00`);
     if (endDT <= startDT) return;
     const participants = [...new Set([currentUserId, ...selectedParticipants])];
-    onSave({ title: title.trim(), memo, participantIds: participants, startDateTime: startDT.toISOString(), endDateTime: endDT.toISOString(), taskId: selectedTaskId });
+    // タスク連携スケジュールはカラー固定（紫）なのでcolorを送らない
+    onSave({ title: title.trim(), memo, color: selectedTaskId ? undefined : color, participantIds: participants, startDateTime: startDT.toISOString(), endDateTime: endDT.toISOString(), taskId: selectedTaskId });
   };
 
   const isOwner = !s || s.createdBy === currentUserId;
@@ -189,7 +216,7 @@ const ScheduleModal = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
-                <TimeSelect value={startTime} onChange={setStartTime} />
+                <TimeSelect value={startTime} onChange={handleStartTimeChange} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">終了時間</label>
@@ -204,6 +231,29 @@ const ScheduleModal = ({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
               placeholder="メモやオンラインMTGのURL、議事録などを入力" />
           </div>
+
+          {/* カラーピッカー（タスク連携なしの場合のみ） */}
+          {!selectedTaskId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">カラー</label>
+              <div className="flex flex-wrap gap-2">
+                {SCHEDULE_COLORS.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    title={c.label}
+                    onClick={() => setColor(c.id)}
+                    className="w-7 h-7 rounded-full transition-transform hover:scale-110 focus:outline-none"
+                    style={{
+                      backgroundColor: c.bg,
+                      border: color === c.id ? '3px solid #2563eb' : `2px solid ${c.border ?? c.bg}`,
+                      boxShadow: color === c.id ? '0 0 0 2px #fff, 0 0 0 4px #2563eb' : undefined,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {(!isEdit || !s?.taskId) && (
             <div>
@@ -353,12 +403,56 @@ const DayMemoModal = React.memo(({ dateStr, userId, onSave, onClose }: {
   );
 });
 
+// ─── 確定済み日程調整メモモーダル ─────────────────────────────────────
+const ConfirmedMemoModal = React.memo(({ poll, onSave, onClose }: {
+  poll: { id: string; title: string; memo?: string };
+  onSave: (memo: string) => Promise<void>;
+  onClose: () => void;
+}) => {
+  const [text, setText] = useState(poll?.memo || '');
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-orange-50 rounded-t-2xl">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <StickyNote className="w-5 h-5 text-orange-500" />
+            {poll?.title}
+          </h2>
+          <button onClick={onClose} className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-6 py-4 space-y-4">
+          <p className="text-xs text-orange-600 font-medium">確定済み日程調整のメモ</p>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-y"
+            placeholder="議事録・URL・備考などを入力"
+          />
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              キャンセル
+            </button>
+            <button type="button" onClick={() => onSave(text)}
+              className="px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors">
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // ─── メインコンポーネント ─────────────────────────────────────────────
 export const TeamMeeting = () => {
   const {
     currentUser, users, tasks, meetingPolls, personalSchedules,
     addMeetingPoll, voteMeetingPoll, moveToTrashMeetingPoll,
-    confirmMeetingPoll, cancelConfirmMeetingPoll,
+    confirmMeetingPoll, cancelConfirmMeetingPoll, updateMeetingPollMemo,
     addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule,
   } = useAppContext();
 
@@ -388,6 +482,8 @@ export const TeamMeeting = () => {
   // 日付メモ用状態
   const [memoModalDate, setMemoModalDate] = useState<string | null>(null); // モーダル表示する日付
   const [memoVersion, setMemoVersion] = useState(0); // メモ保存時に再レンダリング
+  // 確定済み日程調整のメモモーダル
+  const [confirmedMemoModal, setConfirmedMemoModal] = useState<{ pollId: string; title: string } | null>(null);
 
   // 日程調整フォーム
   const [pollView, setPollView] = useState<'list' | 'create' | 'detail'>('list');
@@ -475,7 +571,7 @@ export const TeamMeeting = () => {
   }, [calendarView, calendarWeekStart]);
 
   // ─── スケジュール保存 ──────────────────────────────────────────
-  const handleScheduleSave = async (data: { title: string; memo: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
+  const handleScheduleSave = async (data: { title: string; memo: string; color?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
     if (scheduleModal?.mode === 'create') {
       await addPersonalSchedule(data);
     } else if (scheduleModal?.schedule) {
@@ -869,14 +965,19 @@ export const TeamMeeting = () => {
                             <div
                               key={`poll-${poll.id}`}
                               data-event
-                              className="absolute rounded-md px-1.5 py-1 text-white bg-green-600 shadow-sm cursor-pointer hover:opacity-90 overflow-hidden z-10 select-none"
-                              style={{ top, height, minHeight: 20, ...posStyle }}
-                              title={`${poll.title}（確定済み）`}
-                              onClick={e => e.stopPropagation()}
+                              className="absolute rounded-md px-1.5 py-1 shadow-sm cursor-pointer hover:opacity-90 overflow-hidden z-10 select-none"
+                              style={{ top, height, minHeight: 20, ...posStyle, backgroundColor: '#f97316', color: '#ffffff' }}
+                              title={`${poll.title}（確定済み日程調整）${poll.memo ? ' 📝メモあり' : ''}`}
+                              onClick={e => { e.stopPropagation(); setConfirmedMemoModal({ pollId: poll.id, title: poll.title }); }}
                             >
                               <div className="font-medium text-[11px] truncate pointer-events-none">{poll.title}</div>
                               {height > 30 && (
-                                <div className="text-green-100 text-[10px] pointer-events-none">{parsed.startTime}〜{parsed.endTime}</div>
+                                <div className="text-orange-100 text-[10px] pointer-events-none">{parsed.startTime}〜{parsed.endTime}</div>
+                              )}
+                              {poll.memo && height > 30 && (
+                                <div className="text-orange-200 text-[10px] pointer-events-none flex items-center gap-0.5">
+                                  <span>📝</span><span>メモあり</span>
+                                </div>
                               )}
                             </div>
                           );
@@ -889,17 +990,21 @@ export const TeamMeeting = () => {
                         const { top, height } = getEventStyle(displayStart, displayEnd);
                         const isOwner = schedule.createdBy === currentUser.id;
                         const linkedTask = schedule.taskId ? tasks.find(t => t.id === schedule.taskId) : null;
+                        // タスク連携→紫固定、通常→カスタムカラー（デフォルト青）
+                        const schedColor = linkedTask
+                          ? { bg: '#a855f7', text: '#ffffff' }
+                          : getScheduleColor(schedule.color);
 
                         return (
                           <div
                             key={`sched-${schedule.id}`}
                             className={cn(
-                              'absolute rounded-md px-1.5 py-1 text-white shadow-sm overflow-hidden z-10 select-none',
-                              linkedTask ? 'bg-purple-500' : 'bg-blue-500',
+                              'absolute rounded-md px-1.5 py-1 shadow-sm overflow-hidden z-10 select-none',
                               isDragging ? 'ring-2 ring-blue-300' : isOwner ? 'cursor-grab hover:opacity-90' : 'cursor-pointer hover:opacity-90',
+                              schedColor.bg === '#ffffff' ? 'border border-gray-200' : '',
                             )}
                             data-event
-                            style={{ top, height, minHeight: 20, ...posStyle }}
+                            style={{ top, height, minHeight: 20, ...posStyle, backgroundColor: schedColor.bg, color: schedColor.text }}
                             onPointerDown={isOwner ? (e) => startDrag(e, schedule, 'move', colIdx) : undefined}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -910,17 +1015,17 @@ export const TeamMeeting = () => {
                           >
                             <div className="font-medium text-[11px] truncate pointer-events-none">{schedule.title}</div>
                             {height > 30 && (
-                              <div className="text-blue-100 text-[10px] pointer-events-none">
+                              <div className="text-[10px] pointer-events-none opacity-80">
                                 {format(displayStart, 'HH:mm')}〜{format(displayEnd, 'HH:mm')}
                               </div>
                             )}
                             {schedule.memo && height > 30 && (
-                              <div className="text-blue-200 text-[10px] pointer-events-none flex items-center gap-0.5">
+                              <div className="text-[10px] pointer-events-none opacity-70 flex items-center gap-0.5">
                                 <span>📝</span><span>メモあり</span>
                               </div>
                             )}
                             {linkedTask && height > 42 && (
-                              <div className="text-purple-200 text-[10px] truncate pointer-events-none">📌{linkedTask.title}</div>
+                              <div className="text-[10px] truncate pointer-events-none opacity-80">📌{linkedTask.title}</div>
                             )}
                             {/* リサイズハンドル */}
                             {isOwner && height > 24 && (
@@ -1347,6 +1452,21 @@ export const TeamMeeting = () => {
           onClose={() => setMemoModalDate(null)}
         />
       )}
+
+      {/* 確定済み日程調整のメモモーダル */}
+      {confirmedMemoModal && (() => {
+        const poll = meetingPolls.find(p => p.id === confirmedMemoModal.pollId);
+        return (
+          <ConfirmedMemoModal
+            poll={poll!}
+            onSave={async (memo) => {
+              await updateMeetingPollMemo(confirmedMemoModal.pollId, memo);
+              setConfirmedMemoModal(null);
+            }}
+            onClose={() => setConfirmedMemoModal(null)}
+          />
+        );
+      })()}
     </div>
   );
 };
