@@ -10,6 +10,7 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Recurrence state
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -21,8 +22,9 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !startDate || !endDate) return;
+    if (!title.trim() || !startDate || !endDate || isSubmitting) return;
 
+    setIsSubmitting(true);
     try {
       const duration = differenceInDays(parseISO(endDate), parseISO(startDate));
 
@@ -44,6 +46,7 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
     } catch (error) {
       console.error('Error adding task:', error);
       alert('タスクの追加に失敗しました。');
+      setIsSubmitting(false);
     }
   };
 
@@ -72,13 +75,14 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">新規タスクの追加</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="overflow-y-auto p-6">
-          <form id="task-form" onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">タスク名</label>
               <input
@@ -237,7 +241,7 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
                 </div>
               )}
             </div>
-          </form>
+          </div>
         </div>
 
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
@@ -250,13 +254,13 @@ export const TaskModal = ({ initiativeId, onClose }: { initiativeId: string, onC
           </button>
           <button
             type="submit"
-            form="task-form"
-            disabled={!title.trim() || !startDate || !endDate}
+            disabled={!title.trim() || !startDate || !endDate || isSubmitting}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
-            追加
+            {isSubmitting ? '追加中...' : '追加'}
           </button>
         </div>
+        </form>
       </div>
     </div>
   );

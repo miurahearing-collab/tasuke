@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../store/AppContext';
 import { Plus, ArrowLeft, CheckSquare, User, Trash2, Filter, CalendarPlus } from 'lucide-react';
 
@@ -27,7 +27,19 @@ export const Dashboard = () => {
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [editDescription, setEditDescription] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [isEditingAssignees, setIsEditingAssignees] = useState(false);
+  const [editAssigneeIds, setEditAssigneeIds] = useState<string[]>([]);
   const [mainView, setMainView] = useState<'initiatives' | 'unscheduled'>('initiatives');
+
+  // 詳細表示中に施策が見つからなくなった場合（削除・アーカイブ等）はリストへ戻す
+  useEffect(() => {
+    if (view === 'detail' && selectedInitiativeId) {
+      const found = initiatives.find(i => i.id === selectedInitiativeId);
+      if (!found && initiatives.length > 0) {
+        setView('list');
+      }
+    }
+  }, [view, selectedInitiativeId, initiatives]);
 
   // スケジュール未登録タスク（自分担当・未完了・スケジュール未連携）
   const unscheduledTasks = useMemo(() => {
@@ -80,7 +92,10 @@ export const Dashboard = () => {
     if (init) {
       setEditTitle(init.title);
       setEditCategoryId(init.categoryId);
+      setEditAssigneeIds(init.assigneeIds || []);
     }
+    setIsEditingInitiative(false);
+    setIsEditingAssignees(false);
     setView('detail');
   };
 
@@ -88,10 +103,21 @@ export const Dashboard = () => {
     if (selectedInitiativeId && editTitle.trim()) {
       const init = initiatives.find(i => i.id === selectedInitiativeId);
       if (init) {
-        updateInitiative(selectedInitiativeId, editTitle.trim(), editCategoryId, init.assigneeIds, init.description);
+        updateInitiative(selectedInitiativeId, editTitle.trim(), editCategoryId, editAssigneeIds, init.description);
         setIsEditingInitiative(false);
       }
     }
+  };
+
+  const handleSaveAssignees = (init: typeof initiatives[0]) => {
+    updateInitiative(init.id, init.title, init.categoryId, editAssigneeIds, init.description);
+    setIsEditingAssignees(false);
+  };
+
+  const toggleEditAssignee = (userId: string) => {
+    setEditAssigneeIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
   };
 
   const handleSaveDescription = (init: typeof initiatives[0]) => {
@@ -118,12 +144,11 @@ export const Dashboard = () => {
   if (view === 'detail' && selectedInitiativeId) {
     const init = initiatives.find(i => i.id === selectedInitiativeId);
     if (!init) {
-      setView('list');
       return null;
     }
     return (
       <>
-      <div className="flex flex-col h-full space-y-6">
+      <div className="flex flex-col space-y-4">
         <div className="flex items-start gap-4">
           <button
             onClick={() => setView('list')}
@@ -133,67 +158,146 @@ export const Dashboard = () => {
           </button>
           <div className="flex-1 min-w-0">
             {isEditingInitiative ? (
-              <div className="flex flex-col gap-3 mb-2 max-w-2xl">
+              <div className="flex flex-col gap-2 mb-2 w-full max-w-2xl">
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="text-2xl font-bold text-gray-900 bg-white border border-gray-300 rounded-md px-3 py-1.5 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="text-lg sm:text-2xl font-bold text-gray-900 bg-white border border-gray-300 rounded-md px-3 py-1.5 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="施策のタイトル"
                 />
-                <div className="flex items-center gap-2">
-                  <select
-                    value={editCategoryId}
-                    onChange={(e) => setEditCategoryId(e.target.value)}
-                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">カテゴリなし</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                <select
+                  value={editCategoryId}
+                  onChange={(e) => setEditCategoryId(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">カテゴリなし</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">担当者</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {users.map(u => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleEditAssignee(u.id)}
+                        className={cn(
+                          'px-2.5 py-1 text-xs rounded-full border transition-colors',
+                          editAssigneeIds.includes(u.id)
+                            ? 'bg-blue-100 text-blue-700 border-blue-300 font-medium'
+                            : 'bg-white text-gray-500 border-gray-300 hover:border-blue-300'
+                        )}
+                      >
+                        {u.name}
+                      </button>
                     ))}
-                  </select>
-                  <button onClick={handleSaveInitiative} className="text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleSaveInitiative} className="flex-1 text-white bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                     保存
                   </button>
                   <button onClick={() => {
                     setEditTitle(init.title);
                     setEditCategoryId(init.categoryId);
                     setIsEditingInitiative(false);
-                  }} className="text-gray-600 bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                  }} className="flex-1 text-gray-600 bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                     キャンセル
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-2xl font-bold text-gray-900 min-w-0 break-all">{init.title}</h2>
-                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium shrink-0 whitespace-nowrap">
-                  {categories.find(c => c.id === init.categoryId)?.name || '不明'}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => setIsEditingInitiative(true)}
-                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                    title="施策を編集"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                  </button>
-                  <button
-                    onClick={() => setShowArchiveConfirm(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-md transition-colors whitespace-nowrap"
-                    title="完了にする"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><rect width="20" height="5" x="2" y="4" rx="2"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
-                    完了にする
-                  </button>
-                  {currentUser?.role === 'admin' && (
+              <div className="flex flex-col gap-2">
+                {/* タイトル + カテゴリ + 操作ボタン */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-2xl font-bold text-gray-900 min-w-0 break-all">{init.title}</h2>
+                  <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium shrink-0 whitespace-nowrap">
+                    {categories.find(c => c.id === init.categoryId)?.name || '不明'}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                      title="施策を削除（管理者のみ）"
+                      onClick={() => { setEditAssigneeIds(init.assigneeIds || []); setIsEditingInitiative(true); }}
+                      className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                      title="施策を編集"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                     </button>
+                    <button
+                      onClick={() => setShowArchiveConfirm(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-md transition-colors whitespace-nowrap"
+                      title="完了にする"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><rect width="20" height="5" x="2" y="4" rx="2"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+                      完了にする
+                    </button>
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        title="施策を削除（管理者のみ）"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 担当者 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  {isEditingAssignees ? (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {users.map(u => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleEditAssignee(u.id)}
+                            className={cn(
+                              'px-2.5 py-0.5 text-xs rounded-full border transition-colors',
+                              editAssigneeIds.includes(u.id)
+                                ? 'bg-blue-100 text-blue-700 border-blue-300 font-medium'
+                                : 'bg-white text-gray-500 border-gray-300 hover:border-blue-300'
+                            )}
+                          >
+                            {u.name}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => handleSaveAssignees(init)}
+                        className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => setIsEditingAssignees(false)}
+                        className="px-2.5 py-1 text-xs text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
+                      >
+                        キャンセル
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {init.assigneeIds && init.assigneeIds.length > 0 ? (
+                        init.assigneeIds.map(id => (
+                          <span key={id} className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-full font-medium">
+                            {users.find(u => u.id === id)?.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400">担当者未設定</span>
+                      )}
+                      <button
+                        onClick={() => { setEditAssigneeIds(init.assigneeIds || []); setIsEditingAssignees(true); }}
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        編集
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -294,7 +398,7 @@ export const Dashboard = () => {
             )}
           </div>
         </div>
-        <div className="flex-1 min-h-[500px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+        <div className="h-[55vh] min-h-[280px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           {/* Filter controls inside the Gantt panel header */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50 shrink-0">
             <span className="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
@@ -341,69 +445,69 @@ export const Dashboard = () => {
   }
 
   return (
-    <div className="flex flex-col h-full space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-          <h2 className="text-2xl font-bold text-gray-900 shrink-0">ダッシュボード</h2>
-          {/* メインビュー切り替え */}
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-            <button
-              onClick={() => setMainView('initiatives')}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                mainView === 'initiatives' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              施策一覧
-            </button>
-            <button
-              onClick={() => setMainView('unscheduled')}
-              className={cn(
-                'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                mainView === 'unscheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              スケジュール未登録
-              {unscheduledTasks.length > 0 && (
-                <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                  {unscheduledTasks.length}
-                </span>
-              )}
-            </button>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              className="w-full sm:w-auto border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">すべてのカテゴリー</option>
-              {categories
-                .filter(c => currentUser?.role === 'admin' || !c.isAdminOnly)
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))
-              }
-            </select>
-            <select
-              value={selectedAssigneeId}
-              onChange={(e) => setSelectedAssigneeId(e.target.value)}
-              className="w-full sm:w-auto border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">すべての担当者</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+    <div className="flex flex-col space-y-6">
+      {/* 1行目: タイトル + 新規施策ボタン */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 min-w-0">ダッシュボード</h2>
         <button
           onClick={() => setIsInitiativeModalOpen(true)}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 w-full sm:w-auto justify-center shrink-0"
+          className="shrink-0 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5"
         >
           <Plus className="w-4 h-4" />
           新規施策
         </button>
+      </div>
+
+      {/* 2行目: タブ切り替え + フィルター */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg shrink-0">
+          <button
+            onClick={() => setMainView('initiatives')}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+              mainView === 'initiatives' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            施策一覧
+          </button>
+          <button
+            onClick={() => setMainView('unscheduled')}
+            className={cn(
+              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+              mainView === 'unscheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            未登録
+            {unscheduledTasks.length > 0 && (
+              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                {unscheduledTasks.length}
+              </span>
+            )}
+          </button>
+        </div>
+        <select
+          value={selectedCategoryId}
+          onChange={(e) => setSelectedCategoryId(e.target.value)}
+          className="flex-1 min-w-0 border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="all">すべてのカテゴリー</option>
+          {categories
+            .filter(c => currentUser?.role === 'admin' || !c.isAdminOnly)
+            .map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))
+          }
+        </select>
+        <select
+          value={selectedAssigneeId}
+          onChange={(e) => setSelectedAssigneeId(e.target.value)}
+          className="flex-1 min-w-0 border border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="all">すべての担当者</option>
+          {users.map(u => (
+            <option key={u.id} value={u.id}>{u.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* スケジュール未登録ビュー */}
