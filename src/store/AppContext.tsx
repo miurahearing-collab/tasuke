@@ -1,9 +1,19 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
-import { Category, Initiative, Task, TaskMemo, User, Role, MeetingPoll, VoteStatus, RecurrenceType, PersonalSchedule } from '../types';
+import { Category, Initiative, Task, TaskMemo, User, Role, MeetingPoll, VoteStatus, RecurrenceType, PersonalSchedule, NotificationSettings, AppSettings } from '../types';
 import { db, auth } from '../firebase';
 import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, query, getDoc, deleteField, writeBatch } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { addDays, format, parseISO, startOfDay } from 'date-fns';
+import { addDays, format, parseISO, startOfDay, startOfWeek, endOfWeek } from 'date-fns';
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  weeklyEnabled: true,
+  weeklyDayOfWeek: 2, // 火曜日
+  weeklyHour: 10,
+  weeklyMinute: 0,
+  dailyEnabled: true,
+  dailyHour: 9,
+  dailyMinute: 30,
+};
 
 // ---- Recurring period calculation ----
 
@@ -147,6 +157,11 @@ interface AppContextType {
   permanentDeletePersonalSchedule: (id: string) => Promise<void>;
   bulkPermanentDeletePersonalSchedules: (ids: string[]) => Promise<void>;
   updateUser: (userId: string, name: string, role: Role, visibleCategoryIds?: string[]) => Promise<void>;
+  appSettings: AppSettings;
+  updateAppSettings: (settings: Partial<AppSettings>) => Promise<void>;
+  notificationSettings: NotificationSettings;
+  updateNotificationSettings: (settings: NotificationSettings) => Promise<void>;
+  requestNotificationPermission: () => Promise<NotificationPermission | null>;
   logout: () => Promise<void>;
 }
 
@@ -161,6 +176,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [memos, setMemos] = useState<TaskMemo[]>([]);
   const [meetingPolls, setMeetingPolls] = useState<MeetingPoll[]>([]);
   const [allPersonalSchedules, setAllPersonalSchedules] = useState<PersonalSchedule[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings>({ memberAnalysisAllowedUserIds: [] });
   const [isAuthReady, setIsAuthReady] = useState(false);
   // Track which recurring tasks we've already reset (to avoid re-triggering)
   const resetTaskIdsRef = useRef<Set<string>>(new Set());
@@ -193,6 +209,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Soft-deleted tasks
   const deletedTasks = React.useMemo(() => allTasks.filter(t => t.isDeleted), [allTasks]);
 
+  const currentUserNotificationSettings = React.useMemo(() => {
+    const userData = users.find(u => u.id === currentUser?.id);
+    return userData?.notificationSettings ?? DEFAULT_NOTIFICATION_SETTINGS;
+  }, [users, currentUser]);
+
   // 自分が見えるスケジュール（作成者または参加者）
   const personalSchedules = React.useMemo(() =>
     allPersonalSchedules.filter(s =>
@@ -208,24 +229,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          let role = userData.role;
-          if (firebaseUser.email === 'miura.hearing@gmail.com' && role !== 'admin') {
-            role = 'admin';
-            updateDoc(doc(db, 'users', firebaseUser.uid), { role: 'admin' }).catch(console.error);
+      try {
+        if (firebaseUser) {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            let role = userData.role;
+            if (firebaseUser.email === 'miura.hearing@gmail.com' && role !== 'admin') {
+              role = 'admin';
+              updateDoc(doc(db, 'users', firebaseUser.uid), { role: 'admin' }).catch(console.error);
+            }
+            setCurrentUser({ id: userDoc.id, ...userData, role } as User);
+          } else {
+            const role = firebaseUser.email === 'miura.hearing@gmail.com' ? 'admin' : 'member';
+            setCurrentUser({ id: firebaseUser.uid, name: firebaseUser.displayName || 'User', role } as User);
           }
-          setCurrentUser({ id: userDoc.id, ...userData, role } as User);
         } else {
-          const role = firebaseUser.email === 'miura.hearing@gmail.com' ? 'admin' : 'member';
-          setCurrentUser({ id: firebaseUser.uid, name: firebaseUser.displayName || 'User', role } as User);
+          setCurrentUser(null);
         }
-      } else {
+      } catch (error) {
+        console.error('Auth initialization error:', error);
         setCurrentUser(null);
+      } finally {
+        setIsAuthReady(true);
       }
-      setIsAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
@@ -299,6 +326,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const unsubPersonalSchedules = onSnapshot(collection(db, 'personalSchedules'), (snapshot) => {
       setAllPersonalSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PersonalSchedule)));
     });
+    const unsubAppSettings = onSnapshot(doc(db, 'appSettings', 'main'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setAppSettings({
+          memberAnalysisAllowedUserIds: data.memberAnalysisAllowedUserIds ?? [],
+        });
+      }
+    });
 
     return () => {
       unsubUsers();
@@ -308,8 +343,81 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       unsubMemos();
       unsubPolls();
       unsubPersonalSchedules();
+      unsubAppSettings();
     };
   }, [isAuthReady, currentUser]);
+
+  // ---- Notification scheduling ----
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const settings = currentUserNotificationSettings;
+    if (!settings.weeklyEnabled && !settings.dailyEnabled) return;
+
+    const checkAndFire = () => {
+      const now = new Date();
+      const todayKey = format(now, 'yyyy-MM-dd');
+
+      // --- 週次通知 ---
+      if (
+        settings.weeklyEnabled &&
+        now.getDay() === settings.weeklyDayOfWeek &&
+        now.getHours() === settings.weeklyHour &&
+        now.getMinutes() === settings.weeklyMinute
+      ) {
+        const storageKey = `tasuke_notif_weekly_${currentUser.id}`;
+        if (localStorage.getItem(storageKey) !== todayKey) {
+          const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+          const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+          const count = tasks.filter(t => {
+            if (t.isCompleted || t.isDeleted) return false;
+            if (!t.assigneeIds?.includes(currentUser.id)) return false;
+            const end = parseISO(t.endDate);
+            return end >= weekStart && end <= weekEnd;
+          }).length;
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('今週のタスク', {
+              body: `今週は${count}件のタスクがあります。`,
+            });
+          }
+          localStorage.setItem(storageKey, todayKey);
+        }
+      }
+
+      // --- 毎日通知 ---
+      if (
+        settings.dailyEnabled &&
+        now.getHours() === settings.dailyHour &&
+        now.getMinutes() === settings.dailyMinute
+      ) {
+        const storageKey = `tasuke_notif_daily_${currentUser.id}`;
+        if (localStorage.getItem(storageKey) !== todayKey) {
+          const todayStart = startOfDay(now);
+          const deadline = addDays(todayStart, 3);
+          const urgentTasks = tasks.filter(t => {
+            if (t.isCompleted || t.isDeleted) return false;
+            if (!t.assigneeIds?.includes(currentUser.id)) return false;
+            const end = startOfDay(parseISO(t.endDate));
+            return end >= todayStart && end <= deadline;
+          });
+          if ('Notification' in window && Notification.permission === 'granted' && urgentTasks.length > 0) {
+            const lines = urgentTasks.slice(0, 5).map(t => `・${t.title}`).join('\n');
+            const extra = urgentTasks.length > 5 ? `\n他${urgentTasks.length - 5}件` : '';
+            new Notification('期限が近いタスク', {
+              body: lines + extra,
+            });
+          }
+          localStorage.setItem(storageKey, todayKey);
+        }
+      }
+    };
+
+    checkAndFire();
+    const id = setInterval(checkAndFire, 60_000);
+    return () => clearInterval(id);
+  }, [currentUser, currentUserNotificationSettings, tasks]);
+
+  // ---- End notification scheduling ----
 
   const logout = async () => {
     await signOut(auth);
@@ -321,6 +429,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       data.visibleCategoryIds = visibleCategoryIds;
     }
     await updateDoc(doc(db, 'users', userId), data);
+  };
+
+  const updateAppSettings = async (settings: Partial<AppSettings>) => {
+    await setDoc(doc(db, 'appSettings', 'main'), settings, { merge: true });
+  };
+
+  const updateNotificationSettings = async (settings: NotificationSettings) => {
+    if (!currentUser) return;
+    await updateDoc(doc(db, 'users', currentUser.id), { notificationSettings: settings });
+  };
+
+  const requestNotificationPermission = async (): Promise<NotificationPermission | null> => {
+    if (!('Notification' in window)) return null;
+    if (Notification.permission !== 'default') return Notification.permission;
+    return await Notification.requestPermission();
   };
 
   const addCategory = async (name: string, isAdminOnly: boolean) => {
@@ -700,7 +823,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       confirmMeetingPoll, cancelConfirmMeetingPoll, updateMeetingPollMemo,
       personalSchedules, archivedSchedules,
       addPersonalSchedule, updatePersonalSchedule, archivePersonalSchedule, permanentDeletePersonalSchedule, bulkPermanentDeletePersonalSchedules,
-      updateUser, logout
+      updateUser,
+      appSettings,
+      updateAppSettings,
+      notificationSettings: currentUserNotificationSettings,
+      updateNotificationSettings,
+      requestNotificationPermission,
+      logout,
     }}>
       {children}
     </AppContext.Provider>
