@@ -249,7 +249,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
-        setCurrentUser(null);
+        // Firestore取得失敗時もAuth情報でフォールバック（ログインループ防止）
+        if (firebaseUser) {
+          const role = firebaseUser.email === 'miura.hearing@gmail.com' ? 'admin' : 'member';
+          setCurrentUser({
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || firebaseUser.email || 'User',
+            role,
+          } as User);
+        } else {
+          setCurrentUser(null);
+        }
       } finally {
         setIsAuthReady(true);
       }
