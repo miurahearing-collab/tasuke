@@ -53,8 +53,21 @@ export const Login = () => {
         });
       }
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || '認証エラーが発生しました');
+      console.error('Login error:', err);
+      const code = err?.code || '';
+      let msg = '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        msg = 'メールアドレスまたはパスワードが正しくありません';
+      } else if (code === 'auth/too-many-requests') {
+        msg = 'ログイン試行回数が多すぎます。しばらく待ってから再試行してください';
+      } else if (code === 'auth/network-request-failed') {
+        msg = 'ネットワークエラーが発生しました。接続を確認してください';
+      } else if (code === 'auth/user-disabled') {
+        msg = 'このアカウントは無効化されています';
+      } else {
+        msg = err.message || `認証エラーが発生しました (${code || 'unknown'})`;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

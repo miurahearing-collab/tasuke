@@ -178,8 +178,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [allPersonalSchedules, setAllPersonalSchedules] = useState<PersonalSchedule[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ memberAnalysisAllowedUserIds: [] });
   const [isAuthReady, setIsAuthReady] = useState(false);
-  // Track which recurring tasks we've already reset (to avoid re-triggering)
-  const resetTaskIdsRef = useRef<Set<string>>(new Set());
+  // 繰り返しタスクリセット：セッション内で1回だけ実行するフラグ
+  const recurringResetDoneRef = useRef(false);
 
   const categories = React.useMemo(() => {
     if (currentUser?.role === 'admin' || !currentUser?.visibleCategoryIds) return allCategories;
@@ -247,8 +247,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setCurrentUser(null);
         }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
+      } catch (error: any) {
+        console.error('[Auth] Firestore getDoc failed:', error?.code, error?.message, error);
         // Firestore取得失敗時もAuth情報でフォールバック（ログインループ防止）
         if (firebaseUser) {
           const role = firebaseUser.email === 'miura.hearing@gmail.com' ? 'admin' : 'member';
@@ -270,6 +270,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!isAuthReady || !currentUser) return;
 
+    const handleSnapshotError = (name: string) => (error: Error) => {
+      console.error(`[Firestore] ${name} listener error:`, error);
+    };
+
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setUsers(snapshot.docs.map(doc => {
         const data = doc.data();
@@ -279,63 +283,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           role: data.email === 'miura.hearing@gmail.com' ? 'admin' : data.role
         } as User;
       }));
-    });
+    }, handleSnapshotError('users'));
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
       setAllCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
-    });
+    }, handleSnapshotError('categories'));
     const unsubInitiatives = onSnapshot(collection(db, 'initiatives'), (snapshot) => {
       setAllInitiatives(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Initiative)));
-    });
-    const unsubTasks = onSnapshot(collection(db, 'tasks'), async (snapshot) => {
+    }, handleSnapshotError('initiatives'));
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
       const newTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
       setAllTasks(newTasks);
-
-      // Auto-reset recurring tasks whose period has passed
-      const today = startOfDay(new Date());
-      const tasksNeedingReset: Array<{ task: Task; period: { startDate: string; endDate: string } }> = [];
-
-      for (const task of newTasks) {
-        if (!task.recurringType || task.recurringType === 'none') continue;
-        const period = getCurrentRecurringPeriod(task, today);
-        if (!period) continue;
-        // Only reset if the stored period is different from the computed current period
-        if (task.startDate === period.startDate && task.endDate === period.endDate) continue;
-        // Don't re-process tasks we already reset in this session
-        const resetKey = `${task.id}:${period.startDate}`;
-        if (resetTaskIdsRef.current.has(resetKey)) continue;
-        tasksNeedingReset.push({ task, period });
-        // Setが大きくなりすぎたら古いエントリを破棄（長期稼働時のメモリ肥大防止）
-        if (resetTaskIdsRef.current.size > 500) resetTaskIdsRef.current.clear();
-        resetTaskIdsRef.current.add(resetKey);
-      }
-
-      if (tasksNeedingReset.length > 0) {
-        try {
-          const batch = writeBatch(db);
-          for (const { task, period } of tasksNeedingReset) {
-            batch.update(doc(db, 'tasks', task.id), {
-              startDate: period.startDate,
-              endDate: period.endDate,
-              isCompleted: false,
-              completedBy: deleteField(),
-              completedAt: deleteField(),
-            });
-          }
-          await batch.commit();
-        } catch (e) {
-          console.error('Error resetting recurring tasks:', e);
-        }
-      }
-    });
+    }, handleSnapshotError('tasks'));
     const unsubMemos = onSnapshot(collection(db, 'memos'), (snapshot) => {
       setMemos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TaskMemo)));
-    });
+    }, handleSnapshotError('memos'));
     const unsubPolls = onSnapshot(collection(db, 'meetingPolls'), (snapshot) => {
       setMeetingPolls(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingPoll)));
-    });
+    }, handleSnapshotError('meetingPolls'));
     const unsubPersonalSchedules = onSnapshot(collection(db, 'personalSchedules'), (snapshot) => {
       setAllPersonalSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PersonalSchedule)));
-    });
+    }, handleSnapshotError('personalSchedules'));
     const unsubAppSettings = onSnapshot(doc(db, 'appSettings', 'main'), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -343,7 +310,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           memberAnalysisAllowedUserIds: data.memberAnalysisAllowedUserIds ?? [],
         });
       }
-    });
+    }, handleSnapshotError('appSettings'));
 
     return () => {
       unsubUsers();
@@ -356,6 +323,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       unsubAppSettings();
     };
   }, [isAuthReady, currentUser]);
+
+  // ---- 繰り返しタスクの自動リセット（セッション開始時に1回のみ実行）----
+  useEffect(() => {
+    // タスクが読み込まれていない、またはすでに実行済みの場合はスキップ
+    if (!currentUser || allTasks.length === 0 || recurringResetDoneRef.current) return;
+
+    const today = startOfDay(new Date());
+    const tasksNeedingReset: Array<{ task: Task; period: { startDate: string; endDate: string } }> = [];
+
+    for (const task of allTasks) {
+      if (!task.recurringType || task.recurringType === 'none') continue;
+      const period = getCurrentRecurringPeriod(task, today);
+      if (!period) continue;
+      if (task.startDate === period.startDate && task.endDate === period.endDate) continue;
+      tasksNeedingReset.push({ task, period });
+    }
+
+    // 実行済みフラグをセット（書き込み前にセットして二重実行を防ぐ）
+    recurringResetDoneRef.current = true;
+
+    if (tasksNeedingReset.length > 0) {
+      const batch = writeBatch(db);
+      for (const { task, period } of tasksNeedingReset) {
+        batch.update(doc(db, 'tasks', task.id), {
+          startDate: period.startDate,
+          endDate: period.endDate,
+          isCompleted: false,
+          completedBy: deleteField(),
+          completedAt: deleteField(),
+        });
+      }
+      batch.commit().catch(e => console.error('Error resetting recurring tasks:', e));
+    }
+  }, [allTasks, currentUser]);
 
   // ---- Notification scheduling ----
 
