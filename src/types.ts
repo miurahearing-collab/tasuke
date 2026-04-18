@@ -1,11 +1,26 @@
 export type Role = 'admin' | 'member';
 
+export interface AppSettings {
+  memberAnalysisAllowedUserIds: string[]; // メンバー分析を閲覧できる一般ユーザーのIDリスト（管理者は常に閲覧可）
+}
+
+export interface NotificationSettings {
+  weeklyEnabled: boolean;
+  weeklyDayOfWeek: number; // 0=日..6=土 (default: 2=火)
+  weeklyHour: number;      // 0-23 (default: 10)
+  weeklyMinute: number;    // 0-59 (default: 0)
+  dailyEnabled: boolean;
+  dailyHour: number;       // 0-23 (default: 9)
+  dailyMinute: number;     // 0-59 (default: 30)
+}
+
 export interface User {
   id: string;
   name: string;
   email?: string;
   role: Role;
   visibleCategoryIds?: string[];
+  notificationSettings?: NotificationSettings;
 }
 
 export interface Category {

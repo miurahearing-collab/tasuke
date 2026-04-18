@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { Plus, Trash2, Edit2, Check, Shield, User as UserIcon, Save } from 'lucide-react';
-import { Role, User } from '../types';
+import { Plus, Trash2, Edit2, Check, Shield, User as UserIcon, Save, Bell, Users } from 'lucide-react';
+import { Role, User, NotificationSettings } from '../types';
 import { auth } from '../firebase';
 import { updatePassword } from 'firebase/auth';
 
+const DAY_NAMES = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
 export const Settings = () => {
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     categories, addCategory, updateCategory, deleteCategory,
-    users, updateUser 
+    users, updateUser,
+    appSettings, updateAppSettings,
+    notificationSettings, updateNotificationSettings, requestNotificationPermission,
   } = useAppContext();
 
   // Profile State
@@ -23,6 +28,39 @@ export const Settings = () => {
       setProfileName(currentUser.name);
     }
   }, [currentUser]);
+
+  // Notification State
+  const [localNotif, setLocalNotif] = useState<NotificationSettings>(notificationSettings);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [notifMsg, setNotifMsg] = useState('');
+
+  useEffect(() => {
+    setLocalNotif(notificationSettings);
+  }, [notificationSettings]);
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+    } else {
+      setNotifPermission('unsupported');
+    }
+  }, []);
+
+  const handleRequestPermission = async () => {
+    const result = await requestNotificationPermission();
+    if (result) setNotifPermission(result);
+  };
+
+  const handleSaveNotificationSettings = async () => {
+    if ((localNotif.weeklyEnabled || localNotif.dailyEnabled) &&
+        'Notification' in window && Notification.permission === 'default') {
+      const perm = await requestNotificationPermission();
+      if (perm) setNotifPermission(perm);
+    }
+    await updateNotificationSettings(localNotif);
+    setNotifMsg('通知設定を保存しました。');
+    setTimeout(() => setNotifMsg(''), 3000);
+  };
 
   // Category State
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
@@ -154,8 +192,195 @@ export const Settings = () => {
         </div>
       </section>
 
+      {/* Notification Settings (All users) */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-gray-500" />
+            通知設定
+          </h3>
+        </div>
+        <div className="p-6 space-y-6">
+          {notifMsg && (
+            <div className="p-3 bg-green-50 text-green-700 text-sm rounded-md">{notifMsg}</div>
+          )}
+
+          {/* ブラウザ通知の許可状態 */}
+          {notifPermission === 'unsupported' && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-600">
+              このブラウザはデスクトップ通知に対応していません。
+            </div>
+          )}
+          {notifPermission === 'denied' && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+              ブラウザの通知が拒否されています。ブラウザの設定から通知を許可してください。
+            </div>
+          )}
+          {notifPermission === 'default' && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md flex items-center justify-between gap-3">
+              <span className="text-sm text-yellow-800">
+                通知を受け取るにはブラウザの通知許可が必要です。
+              </span>
+              <button
+                onClick={handleRequestPermission}
+                className="shrink-0 px-3 py-1.5 text-xs font-medium text-yellow-800 bg-yellow-100 border border-yellow-300 rounded-md hover:bg-yellow-200"
+              >
+                通知を許可する
+              </button>
+            </div>
+          )}
+
+          {/* 週次通知 */}
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={localNotif.weeklyEnabled}
+                onChange={(e) => setLocalNotif(s => ({ ...s, weeklyEnabled: e.target.checked }))}
+                className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4"
+              />
+              <span className="text-sm font-medium text-gray-900">週次通知（今週のタスク数）</span>
+            </label>
+            {localNotif.weeklyEnabled && (
+              <div className="ml-6 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">曜日</label>
+                  <select
+                    value={localNotif.weeklyDayOfWeek}
+                    onChange={(e) => setLocalNotif(s => ({ ...s, weeklyDayOfWeek: Number(e.target.value) }))}
+                    className="px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {DAY_NAMES.map((d, i) => (
+                      <option key={i} value={i}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">時刻</label>
+                  <select
+                    value={localNotif.weeklyHour}
+                    onChange={(e) => setLocalNotif(s => ({ ...s, weeklyHour: Number(e.target.value) }))}
+                    className="px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                    ))}
+                  </select>
+                  <span className="text-sm text-gray-600">時</span>
+                  <select
+                    value={localNotif.weeklyMinute}
+                    onChange={(e) => setLocalNotif(s => ({ ...s, weeklyMinute: Number(e.target.value) }))}
+                    className="px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {MINUTES.map(m => (
+                      <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                    ))}
+                  </select>
+                  <span className="text-sm text-gray-600">分</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 毎日通知 */}
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={localNotif.dailyEnabled}
+                onChange={(e) => setLocalNotif(s => ({ ...s, dailyEnabled: e.target.checked }))}
+                className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4"
+              />
+              <span className="text-sm font-medium text-gray-900">毎日通知（期限3日以内のタスク一覧）</span>
+            </label>
+            {localNotif.dailyEnabled && (
+              <div className="ml-6 flex items-center gap-2">
+                <label className="text-sm text-gray-600">時刻</label>
+                <select
+                  value={localNotif.dailyHour}
+                  onChange={(e) => setLocalNotif(s => ({ ...s, dailyHour: Number(e.target.value) }))}
+                  className="px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-600">時</span>
+                <select
+                  value={localNotif.dailyMinute}
+                  onChange={(e) => setLocalNotif(s => ({ ...s, dailyMinute: Number(e.target.value) }))}
+                  className="px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  {MINUTES.map(m => (
+                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-600">分</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleSaveNotificationSettings}
+            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 flex items-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            保存する
+          </button>
+        </div>
+      </section>
+
       {currentUser.role === 'admin' && (
         <>
+          {/* アクセス権限設定 */}
+          <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-gray-500" />
+                アクセス権限設定
+              </h3>
+            </div>
+            <div className="p-6 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-1">メンバー分析の閲覧を許可するユーザー</p>
+                <p className="text-xs text-gray-500 mb-3">
+                  管理者は常に閲覧可能です。以下から一般ユーザーを個別に選択できます。
+                </p>
+                <div className="space-y-2">
+                  {users.filter(u => u.role !== 'admin').map(u => {
+                    const allowedIds = appSettings.memberAnalysisAllowedUserIds ?? [];
+                    const allowed = allowedIds.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center gap-3 p-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={allowed}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...allowedIds, u.id]
+                              : allowedIds.filter(id => id !== u.id);
+                            updateAppSettings({ memberAnalysisAllowedUserIds: next });
+                          }}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-900">{u.name}</span>
+                          {u.email && <span className="ml-2 text-xs text-gray-400">{u.email}</span>}
+                        </div>
+                        {allowed && (
+                          <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium shrink-0">閲覧可</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                  {users.filter(u => u.role !== 'admin').length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-4">一般ユーザーがいません</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* User Management Section */}
           <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">

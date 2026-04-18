@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { LogOut, LayoutDashboard, Archive, Settings as SettingsIcon, Calendar, Clock, Menu, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, Archive, Settings as SettingsIcon, Calendar, Clock, Menu, X, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+export type Screen = 'home' | 'dashboard' | 'archive' | 'settings' | 'meeting' | 'reservation' | 'evaluation' | 'memberAnalysis';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentScreen: 'home' | 'dashboard' | 'archive' | 'settings' | 'meeting' | 'reservation' | 'evaluation';
-  setCurrentScreen: (screen: 'home' | 'dashboard' | 'archive' | 'settings' | 'meeting' | 'reservation' | 'evaluation') => void;
+  currentScreen: Screen;
+  setCurrentScreen: (screen: Screen) => void;
 }
 
 export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProps) => {
-  const { currentUser, logout } = useAppContext();
+  const { currentUser, logout, appSettings } = useAppContext();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (!currentUser) return null;
@@ -21,12 +23,14 @@ export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProp
     { name: 'アーカイブ', id: 'archive', icon: Archive, group: 'メイン' },
     { name: 'スケジューラー', id: 'meeting', icon: Calendar, group: 'ミーティング' },
     { name: '打ち合わせ予約', id: 'reservation', icon: Clock, group: 'ミーティング' },
+    ...(currentUser.role === 'admin' || appSettings.memberAnalysisAllowedUserIds.includes(currentUser.id)
+      ? [{ name: 'メンバー分析', id: 'memberAnalysis', icon: Users, group: 'システム' }]
+      : []
+    ),
     ...(currentUser.role === 'admin' ? [
       { name: '評価ダッシュボード', id: 'evaluation', icon: LayoutDashboard, group: 'システム' },
-      { name: '設定', id: 'settings', icon: SettingsIcon, group: 'システム' }
-    ] : [
-      { name: '設定', id: 'settings', icon: SettingsIcon, group: 'システム' }
-    ])
+    ] : []),
+    { name: '設定', id: 'settings', icon: SettingsIcon, group: 'システム' }
   ] as const;
 
   const handleNavigation = (id: any) => {
@@ -144,7 +148,7 @@ export const Layout = ({ children, currentScreen, setCurrentScreen }: LayoutProp
 
         {/* Main Content Area */}
         <main className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50 relative">
-          <div className="max-w-5xl mx-auto h-full">
+          <div className="max-w-5xl mx-auto">
             {children}
           </div>
         </main>

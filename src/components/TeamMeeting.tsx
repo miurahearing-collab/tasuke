@@ -193,6 +193,7 @@ const ScheduleModal = ({
   const isOwner = !s || s.createdBy === currentUserId;
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-2xl">
@@ -319,19 +320,27 @@ const ScheduleModal = ({
           </div>
         </form>
 
-        {showDeleteConfirm && (
-          <div className="px-6 pb-6">
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800 mb-3">このスケジュールをアーカイブしますか？</p>
-              <div className="flex gap-2">
-                <button onClick={() => { onDelete?.(); onClose(); }} className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700">アーカイブ</button>
-                <button onClick={() => setShowDeleteConfirm(false)} className="px-3 py-1.5 bg-white text-gray-700 text-sm border rounded hover:bg-gray-50">キャンセル</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
+
+    {showDeleteConfirm && (
+      <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowDeleteConfirm(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="text-base font-bold text-gray-900">スケジュールをアーカイブ</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-6">このスケジュールをアーカイブしますか？<br />アーカイブ後はアーカイブ一覧から確認できます。</p>
+          <div className="flex gap-3 justify-end">
+            <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">キャンセル</button>
+            <button onClick={() => { onDelete?.(); onClose(); }} className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors">アーカイブ</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
@@ -573,12 +582,13 @@ export const TeamMeeting = () => {
 
   // ─── スケジュール保存 ──────────────────────────────────────────
   const handleScheduleSave = async (data: { title: string; memo: string; color?: string; participantIds: string[]; startDateTime: string; endDateTime: string; taskId?: string }) => {
-    if (scheduleModal?.mode === 'create') {
-      await addPersonalSchedule(data);
-    } else if (scheduleModal?.schedule) {
-      await updatePersonalSchedule(scheduleModal.schedule.id, data);
-    }
+    const currentModal = scheduleModal;
     setScheduleModal(null);
+    if (currentModal?.mode === 'create') {
+      await addPersonalSchedule(data);
+    } else if (currentModal?.schedule) {
+      await updatePersonalSchedule(currentModal.schedule.id, data);
+    }
   };
 
   // ─── イベント位置計算 ──────────────────────────────────────────

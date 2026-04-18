@@ -150,114 +150,103 @@ export const TaskDetailModal = ({ taskId, onClose }: { taskId: string, onClose: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-start gap-3 justify-between bg-gray-50">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold text-gray-900 break-all">{task.title}</h2>
-            <div className="text-sm text-gray-500 mt-1 flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span>期間:</span>
-                {isEditingDates ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="border border-gray-300 rounded-md text-xs py-1 px-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <span>~</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="border border-gray-300 rounded-md text-xs py-1 px-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <button onClick={handleSaveDates} className="text-blue-600 hover:text-blue-800"><Save className="w-4 h-4" /></button>
-                    <button onClick={() => { setStartDate(task.startDate); setEndDate(task.endDate); setIsEditingDates(false); }} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span>{format(parseISO(task.startDate), 'yyyy/MM/dd')} ~ {format(parseISO(task.endDate), 'yyyy/MM/dd')}</span>
-                    <button onClick={() => setIsEditingDates(true)} className="text-blue-600 hover:text-blue-800 text-xs">変更</button>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span>担当:</span>
-                {isEditingAssignee ? (
-                  <div className="flex items-center gap-2 relative">
-                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 shadow-lg rounded-md p-2 z-10 w-48 max-h-48 overflow-y-auto">
-                      {users.map(u => (
-                        <label key={u.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                          <input 
-                            type="checkbox" 
-                            checked={assigneeIds.includes(u.id)}
-                            onChange={() => toggleAssignee(u.id)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          {u.name}
-                        </label>
-                      ))}
-                    </div>
-                    <button onClick={handleSaveAssignee} className="text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded text-xs">保存</button>
-                    <button onClick={() => { setAssigneeIds(task.assigneeIds || []); setIsEditingAssignee(false); }} className="text-gray-500 hover:text-gray-700 bg-gray-100 px-2 py-1 rounded text-xs">キャンセル</button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-900">{getAssigneeNames(task.assigneeIds, task.assigneeId)}</span>
-                    <button onClick={() => setIsEditingAssignee(true)} className="text-blue-600 hover:text-blue-800 text-xs">変更</button>
-                  </div>
-                )}
-              </div>
-              {task.createdBy && (
-                <div className="flex items-center gap-1 text-xs">
-                  <span>作成者:</span>
-                  <span className="font-medium text-gray-900">{getUserName(task.createdBy)}</span>
+        <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50 space-y-2">
+          {/* 1行目: タイトル + 閉じるボタン */}
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 line-clamp-2 min-w-0 flex-1 leading-snug">{task.title}</h2>
+            <button onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-200 rounded-full transition-colors mt-0.5">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* 2行目: メタ情報（期間・担当・作成者） */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+            <div className="flex items-center gap-1">
+              <span className="text-gray-400">期間</span>
+              {isEditingDates ? (
+                <div className="flex items-center gap-1 flex-wrap">
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                    className="border border-gray-300 rounded text-xs py-0.5 px-1.5 focus:ring-blue-500 focus:border-blue-500" />
+                  <span>~</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                    className="border border-gray-300 rounded text-xs py-0.5 px-1.5 focus:ring-blue-500 focus:border-blue-500" />
+                  <button onClick={handleSaveDates} className="text-blue-600 hover:text-blue-800"><Save className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setStartDate(task.startDate); setEndDate(task.endDate); setIsEditingDates(false); }} className="text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
                 </div>
-              )}
-              {task.isCompleted && task.completedBy && (
-                <div className="flex items-center gap-1 text-xs text-green-600">
-                  <span>完了者:</span>
-                  <span className="font-medium">{getUserName(task.completedBy)}</span>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-gray-700">{format(parseISO(task.startDate), 'MM/dd')} ~ {format(parseISO(task.endDate), 'MM/dd')}</span>
+                  <button onClick={() => setIsEditingDates(true)} className="text-blue-500 hover:text-blue-700 text-[10px] underline">変更</button>
                 </div>
               )}
             </div>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-400">担当</span>
+              {isEditingAssignee ? (
+                <div className="flex items-center gap-1 relative">
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 shadow-lg rounded-md p-2 z-10 w-44 max-h-44 overflow-y-auto">
+                    {users.map(u => (
+                      <label key={u.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input type="checkbox" checked={assigneeIds.includes(u.id)} onChange={() => toggleAssignee(u.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                        {u.name}
+                      </label>
+                    ))}
+                  </div>
+                  <button onClick={handleSaveAssignee} className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs">保存</button>
+                  <button onClick={() => { setAssigneeIds(task.assigneeIds || []); setIsEditingAssignee(false); }} className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded text-xs">×</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-gray-700">{getAssigneeNames(task.assigneeIds, task.assigneeId)}</span>
+                  <button onClick={() => setIsEditingAssignee(true)} className="text-blue-500 hover:text-blue-700 text-[10px] underline">変更</button>
+                </div>
+              )}
+            </div>
+            {task.createdBy && (
+              <div className="flex items-center gap-1">
+                <span className="text-gray-400">作成</span>
+                <span className="font-medium text-gray-700">{getUserName(task.createdBy)}</span>
+              </div>
+            )}
+            {task.isCompleted && task.completedBy && (
+              <div className="flex items-center gap-1 text-green-600">
+                <span>完了者:</span>
+                <span className="font-medium">{getUserName(task.completedBy)}</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {/* スケジュール登録ボタン */}
+
+          {/* 3行目: アクションボタン */}
+          <div className="flex items-center gap-2 pt-0.5">
             {isScheduled ? (
-              <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded-md whitespace-nowrap">
-                <Check className="w-3.5 h-3.5" />
+              <span className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 rounded-md">
+                <Check className="w-3 h-3" />
                 スケジュール済み
               </span>
             ) : (
               <button
                 onClick={() => setShowScheduleForm(v => !v)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors whitespace-nowrap"
-                title="スケジュールに登録"
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
               >
-                <CalendarPlus className="w-3.5 h-3.5" />
-                スケジュール登録
+                <CalendarPlus className="w-3 h-3" />
+                スケジュール
               </button>
             )}
             <button
               onClick={() => toggleTaskCompletion(task.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
-                task.isCompleted
-                  ? 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                  : 'text-green-700 bg-green-50 hover:bg-green-100'
-              }`}
-              title={task.isCompleted ? '未完了に戻す' : '完了にする'}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors',
+                task.isCompleted ? 'text-gray-600 bg-gray-100 hover:bg-gray-200' : 'text-green-700 bg-green-50 hover:bg-green-100'
+              )}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
               {task.isCompleted ? '未完了に戻す' : '完了にする'}
             </button>
-            <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="タスクを削除">
-              <Trash2 className="w-5 h-5" />
-            </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-200 rounded-full transition-colors">
-              <X className="w-5 h-5" />
+            <button onClick={() => setShowDeleteConfirm(true)} className="ml-auto p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="タスクを削除">
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
